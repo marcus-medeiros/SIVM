@@ -49,6 +49,14 @@ def gerar_dados_eletricos():
 df_original = gerar_dados_eletricos()
 
 # =======================================================================
+# VALORES FIXOS DAS MÁQUINAS
+# =======================================================================
+# valores fixos (podem vir de um banco futuramente)
+confianca_fix = {"A": 95.0, "B": 90.0, "C": 85.0}
+tempo_op_fix = {"A": 520, "B": 610, "C": 450}
+falhas_fix = {"A": 1, "B": 3, "C": 0}
+
+# =======================================================================
 # SIDEBAR MODERNA
 # =======================================================================
 with st.sidebar:
@@ -75,28 +83,30 @@ with st.sidebar:
 # PÁGINA INICIAL
 # =======================================================================
 if escolha_pagina == "Página Inicial":
-    # Dados individuais por máquina
-    dados_a = df_original[['Tensão Fase A', 'Corrente A', 'Potência Ativa A', 'Potência Reativa A', 'Potência Aparente A']]
-    dados_b = df_original[['Tensão Fase B', 'Corrente B', 'Potência Ativa B', 'Potência Reativa B', 'Potência Aparente B']]
-    dados_c = df_original[['Tensão Fase C', 'Corrente C', 'Potência Ativa C', 'Potência Reativa C', 'Potência Aparente C']]
+    dados_a = df_original[['Tensão Fase A', 'Corrente A', 'Potência Ativa A']]
+    dados_b = df_original[['Tensão Fase B', 'Corrente B', 'Potência Ativa B']]
+    dados_c = df_original[['Tensão Fase C', 'Corrente C', 'Potência Ativa C']]
 
     pot_ativa_max_a = dados_a['Potência Ativa A'].max()
     pot_ativa_max_b = dados_b['Potência Ativa B'].max()
     pot_ativa_max_c = dados_c['Potência Ativa C'].max()
     media_pw = (pot_ativa_max_a + pot_ativa_max_b + pot_ativa_max_c) / 3
 
+    # média de confiança para calcular delta %
+    media_conf = np.mean(list(confianca_fix.values()))
+
     tab1, tab2, tab3 = st.tabs(["Máquina A", "Máquina B", "Máquina C"])
 
-    def exibir_maquina(nome_maquina, tensao, corrente, pot_ativa, pot_reativa, pot_aparente, pot_ativa_max, delta_pot):
-
+    def exibir_maquina(nome_maquina, tensao, pot_ativa, conf, tempo, falhas):
         col1, col2, col3 = st.columns(3)
-        confianca = max(0, min(100, 100 - abs(delta_pot) / media_pw * 100))
-        tempo_operacao = np.random.randint(100, 1000)
-        falhas = np.random.randint(0, 5)
+        delta_conf = ((conf - media_conf) / media_conf) * 100
 
-        col1.metric("Confiança do Equipamento", f"{confianca:.1f} %")
-        col2.metric("Tempo de Operação", f"{tempo_operacao} h")
-        col3.metric("Falhas Detectadas", f"{falhas}")
+        col1.metric("Confiança do Equipamento", f"{conf:.1f} %",
+                    delta=f"{delta_conf:+.1f} %")
+        col2.metric("Tempo de Operação", f"{tempo} h",
+                    delta=f"{((tempo - np.mean(list(tempo_op_fix.values()))) / np.mean(list(tempo_op_fix.values()))) * 100:+.1f} %")
+        col3.metric("Falhas Detectadas", f"{falhas}",
+                    delta=f"{((falhas - np.mean(list(falhas_fix.values()))) / (np.mean(list(falhas_fix.values()))+0.01)) * 100:+.1f} %")
 
         st.markdown("---")
 
@@ -112,18 +122,15 @@ if escolha_pagina == "Página Inicial":
             st.line_chart(fft_df)
 
     with tab1:
-        exibir_maquina("Máquina A", dados_a['Tensão Fase A'], dados_a['Corrente A'],
-                       dados_a['Potência Ativa A'], dados_a['Potência Reativa A'], dados_a['Potência Aparente A'],
-                       pot_ativa_max_a, pot_ativa_max_a - media_pw)
+        exibir_maquina("Máquina A", dados_a['Tensão Fase A'], dados_a['Potência Ativa A'],
+                       confianca_fix["A"], tempo_op_fix["A"], falhas_fix["A"])
 
     with tab2:
-        exibir_maquina("Máquina B", dados_b['Tensão Fase B'], dados_b['Corrente B'],
-                       dados_b['Potência Ativa B'], dados_b['Potência Reativa B'], dados_b['Potência Aparente B'],
-                       pot_ativa_max_b, pot_ativa_max_b - media_pw)
+        exibir_maquina("Máquina B", dados_b['Tensão Fase B'], dados_b['Potência Ativa B'],
+                       confianca_fix["B"], tempo_op_fix["B"], falhas_fix["B"])
 
     with tab3:
-        exibir_maquina("Máquina C", dados_c['Tensão Fase C'], dados_c['Corrente C'],
-                       dados_c['Potência Ativa C'], dados_c['Potência Reativa C'], dados_c['Potência Aparente C'],
-                       pot_ativa_max_c, pot_ativa_max_c - media_pw)
+        exibir_maquina("Máquina C", dados_c['Tensão Fase C'], dados_c['Potência Ativa C'],
+                       confianca_fix["C"], tempo_op_fix["C"], falhas_fix["C"])
 
     st.divider()
