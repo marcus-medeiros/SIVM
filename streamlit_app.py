@@ -199,7 +199,6 @@ if escolha_pagina == "Histórico":
             tabela_a.to_excel(writer, sheet_name="Máquina A")
             tabela_b.to_excel(writer, sheet_name="Máquina B")
             tabela_c.to_excel(writer, sheet_name="Máquina C")
-            writer.save()
         st.download_button(
             label="📥 Baixar Tabelas de Alarmes",
             data=buffer.getvalue(),
