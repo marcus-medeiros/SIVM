@@ -54,7 +54,7 @@ df_original = gerar_dados_eletricos()
 # valores fixos (podem vir de um banco futuramente)
 confianca_fix = {"A": 95.0, "B": 90.0, "C": 85.0}
 tempo_op_fix = {"A": 520, "B": 610, "C": 450}
-falhas_fix = {"A": 1, "B": 3, "C": 0}
+falhas_fix = {"A": 0, "B": 1, "C": 3}
 
 # =======================================================================
 # SIDEBAR MODERNA
