@@ -59,15 +59,15 @@ with st.sidebar:
         icons=["house", "clock-history", "gear"],
         default_index=0,
         styles={
-            "container": {"padding": "5!important", "background-color": "#f9f9f9"},
-            "icon": {"color": "#CC291E", "font-size": "20px"},
+            "container": {"padding": "5!important", "background-color": "#ffffff"},
+            "icon": {"color": "#FFFFFF", "font-size": "20px"},
             "nav-link": {
                 "font-size": "16px",
                 "text-align": "left",
                 "margin": "0px",
                 "--hover-color": "#eee",
             },
-            "nav-link-selected": {"background-color": "#4a90e2", "color": "white"},
+            "nav-link-selected": {"background-color": "#ce4545", "color": "white"},
         }
     )
 
