@@ -81,12 +81,6 @@ if escolha_pagina == "Página Inicial":
 
         st.markdown("---")
 
-        # ---- MÉTRICAS ELÉTRICAS ----
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Potência Ativa", f"{pot_ativa_max:.2f} W", f"{delta_pot:.2f} W | Média: {media_pw:.2f} W")
-        col2.metric("Potência Reativa", f"{pot_reativa.mean():.2f} var", "-8%")
-        col3.metric("Potência Aparente", f"{pot_aparente.mean():.2f} VA", "12%", delta_color="inverse")
-
         # ---- GRÁFICOS ----
         col_rms, col_fft = st.columns(2)
         with col_rms:
