@@ -70,7 +70,7 @@ with st.sidebar:
     st.markdown("""
         <h1 style='color: #ce4545; font-size: 36px; text-align: center; 
                    text-shadow: 2px 2px #aaa; font-weight: bold; margin-bottom: 20px;'>
-            ⚡ SIVM ⚡
+            - SIVM -
         </h1>
         """, unsafe_allow_html=True)
     
