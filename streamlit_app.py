@@ -128,7 +128,7 @@ if escolha_pagina == "Página Inicial":
                     strokeDash=[4, 4], color="black", size=3
                 ).encode(y="y:Q")
                 linha_max = alt.Chart(pd.DataFrame({"y": [max_limite]})).mark_rule(
-                    strokeDash=[4, 4], color="block", size =3
+                    strokeDash=[4, 4], color="black", size =3
                 ).encode(y="y:Q")
                 chart_rms = chart_rms + linha_min + linha_max
             st.altair_chart(chart_rms, use_container_width=True)
