@@ -140,7 +140,7 @@ with st.sidebar:
 # CONFIGURAÇÕES
 # =======================================================================
 
-if escolha_pagina == "Configurações":
+if escolha_pagina == "Configurações ":
     st.markdown("#### Configurações")
     
     # Campo para senha
