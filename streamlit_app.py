@@ -276,7 +276,7 @@ if escolha_pagina == "Historico":
 # -----------------------------------------------------------------------
 # GERAL
 # -----------------------------------------------------------------------
-elif escolha_pagina == "Pagina Inicial":
+elif escolha_pagina == "Página Inicial":
     st.header("🖥️ Geral")
 
     st.header("Análise das Tensões e Correntes")
