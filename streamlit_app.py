@@ -139,17 +139,35 @@ with st.sidebar:
 # =======================================================================
 # CONFIGURAÇÕES
 # =======================================================================
-
-if escolha_pagina == "Configurações ":
+if escolha_pagina == "Configurações":
     st.markdown("#### Configurações")
-    
+
+    # Mostrar limites atuais SEM senha
+    st.markdown(f"**Limite atual mínimo:** `{st.session_state['limites_tensao'][0]} V`")
+    st.markdown(f"**Limite atual máximo:** `{st.session_state['limites_tensao'][1]} V`")
+    st.divider()
+
     # Campo para senha
-    senha = st.text_input("Digite a senha para alterar os limites:", type="password")
-    
-    if senha == "admin":
+    senha = st.text_input("🔑 Digite a senha para alterar os limites:", type="password")
+
+    if senha == "":
+        st.info("Digite a senha para liberar a edição dos limites.")
+    elif senha != "admin":
+        st.error("❌ Senha incorreta!")
+    else:
         st.success("✅ Acesso liberado. Agora você pode alterar os limites.")
-        max_tensao = st.number_input("Valor máximo da tensão (V)", value=st.session_state["limites_tensao"][1], step=1.0)
-        min_tensao = st.number_input("Valor mínimo da tensão (V)", value=st.session_state["limites_tensao"][0], step=1.0)
+
+        # Inputs aparecem somente quando a senha está correta
+        max_tensao = st.number_input(
+            "Valor máximo da tensão (V)", 
+            value=st.session_state["limites_tensao"][1], 
+            step=1.0
+        )
+        min_tensao = st.number_input(
+            "Valor mínimo da tensão (V)", 
+            value=st.session_state["limites_tensao"][0], 
+            step=1.0
+        )
 
         if st.button("Salvar limites"):
             if min_tensao < max_tensao:
@@ -157,10 +175,6 @@ if escolha_pagina == "Configurações ":
                 st.success(f"✅ Limites salvos: {min_tensao} V - {max_tensao} V")
             else:
                 st.error(f"❌ O limite inferior ({min_tensao} V) é maior que o limite superior ({max_tensao} V).")
-    elif senha != "":
-        st.error("❌ Senha incorreta! Tente novamente.")
-    else:
-        st.info("🔒 Digite a senha para alterar os limites.")
 # =======================================================================
 # PÁGINA HISTÓRICO
 # =======================================================================
