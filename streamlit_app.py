@@ -78,6 +78,42 @@ with st.sidebar:
         }
     )
 
+    # =======================================================================
+    # INDICADORES DE ALERTAS NA SIDEBAR
+    # =======================================================================
+    min_limite, max_limite = st.session_state["limites_tensao"]
+
+    def gerar_alarm_table(nome_maquina, tensao):
+        df_alarme = tensao[(tensao < min_limite) | (tensao > max_limite)].to_frame(name="Tensão (V)")
+        if df_alarme.empty:
+            df_alarme = pd.DataFrame({"Tensão (V)": [], "Alarme": []})
+        else:
+            df_alarme["Alarme"] = df_alarme["Tensão (V)"].apply(
+                lambda x: "Acima do limite" if x > max_limite else "Abaixo do limite"
+            )
+        return df_alarme
+
+    def indicador_alertas(df_alarme):
+        n_alertas = len(df_alarme)
+        if n_alertas == 0:
+            return "🟢"  # sem alertas
+        elif n_alertas <= 20:
+            return "🟠"  # poucos alertas
+        else:
+            return "🔴"  # muitos alertas
+
+    # Calcular indicadores para cada máquina
+    tabela_a = gerar_alarm_table("A", df_original['Tensão Fase A'])
+    tabela_b = gerar_alarm_table("B", df_original['Tensão Fase B'])
+    tabela_c = gerar_alarm_table("C", df_original['Tensão Fase C'])
+
+    # Exibir indicadores na sidebar
+    with st.sidebar:
+        st.markdown("### ⚡ Status das Máquinas")
+        st.markdown(f"**Máquina A:** {indicador_alertas(tabela_a)}")
+        st.markdown(f"**Máquina B:** {indicador_alertas(tabela_b)}")
+        st.markdown(f"**Máquina C:** {indicador_alertas(tabela_c)}")
+        st.markdown("---")
 # =======================================================================
 # CONFIGURAÇÕES
 # =======================================================================
