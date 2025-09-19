@@ -64,7 +64,7 @@ falhas_fix = {"A": 0, "B": 1, "C": 3}
 # SIDEBAR
 # =======================================================================
 with st.sidebar:
-    st.image("Logo_v2.png", width=120)
+    st.header("SIVM")
     escolha_pagina = option_menu(
         menu_title=None,
         options=["Página Inicial", "Histórico", "Configurações"],
