@@ -46,7 +46,7 @@ with st.sidebar:
 # -----------------------------------------------------------------------
 # PÁGINA INICIAL
 # -----------------------------------------------------------------------
-if escolha_pagina == "Página Inicial":
+if escolha_pagina == "Geral":
     st.title(":zap: Análise de Dados dos Motores")
     # --- 1. Geração de Dados (sem alterações) ---
     @st.cache_data
@@ -276,7 +276,7 @@ if escolha_pagina == "Página Inicial":
 # -----------------------------------------------------------------------
 # GERAL
 # -----------------------------------------------------------------------
-elif escolha_pagina == "GERAL":
+elif escolha_pagina == "Pagina Principal":
     st.header("🖥️ Geral")
 
     st.header("Análise das Tensões e Correntes")
