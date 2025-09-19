@@ -209,7 +209,7 @@ if escolha_pagina == "Histórico":
 # PÁGINA INICIAL
 # =======================================================================
 if escolha_pagina == "Página Inicial":
-    st.markdown("#### Página ")
+    st.markdown("#### Página Inicial ")
     min_limite, max_limite = st.session_state["limites_tensao"]
 
     dados_a = df_original[['Tensão Fase A', 'Potência Ativa A']]
