@@ -108,8 +108,6 @@ if escolha_pagina == "Página Inicial":
         col3.metric("Falhas Detectadas", f"{falhas}",
                     delta=f"{((falhas - np.mean(list(falhas_fix.values()))) / (np.mean(list(falhas_fix.values()))+0.01)) * 100:+.1f} %")
 
-        st.markdown("---")
-
         col_rms, col_fft = st.columns(2)
         with col_rms:
             st.write("### RMS (Tensão)")
