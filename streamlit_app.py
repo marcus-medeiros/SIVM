@@ -285,18 +285,27 @@ elif escolha_pagina == "Página Inicial":
 
     # Cálculo da média
     media_pw = (pot_ativa_max_a + pot_ativa_max_b + pot_ativa_max_c) / 3
-    st.header("Medições")
+    st.header("Análise das Tensões e Correntes")
+
+    # Filtragem de dados para cada máquina (supondo que chart_data seja um DataFrame com colunas 'fase' e 'valor')
+    # Exemplo: chart_data = pd.DataFrame({"tempo": [...], "fase": ["A","B","C",...], "valor": [...]})
+    chart_data_a = chart_data[chart_data["fase"] == "A"]
+    chart_data_b = chart_data[chart_data["fase"] == "B"]
+    chart_data_c = chart_data[chart_data["fase"] == "C"]
 
     tab1, tab2, tab3 = st.tabs(["Máquina A", "Máquina B", "Máquina C"])
     
     with tab1:  # MÁQUINA A
-        st.subheader("RMS")
-        st.line_chart(chart_data * 1.41)
-        st.divider()
-        st.subheader("FFT")
-        st.line_chart(chart_data * 0.25)
-
         st.subheader("Máquina A")
+
+        col_rms, col_fft = st.columns(2)
+        with col_rms:
+            st.write("### RMS")
+            st.line_chart(chart_data_a.set_index("tempo")["valor"] * 1.41)
+        with col_fft:
+            st.write("### FFT")
+            st.line_chart(chart_data_a.set_index("tempo")["valor"] * 0.25)
+
         col1, col2, col3 = st.columns(3)
         relacao_pw_a = pot_ativa_max_a - media_pw
         col1.metric("Potência Ativa", f"{pot_ativa_max_a:.2f} W", f"{relacao_pw_a:.2f} W | Média: {media_pw:.2f} W")
@@ -304,13 +313,16 @@ elif escolha_pagina == "Página Inicial":
         col3.metric("Potência Aparente", "1500 VA", "12%", delta_color="inverse")
 
     with tab2:  # MÁQUINA B
-        st.subheader("RMS")
-        st.line_chart(chart_data * 1.25)
-        st.divider()
-        st.subheader("FFT")
-        st.line_chart(chart_data * 0.3)
-
         st.subheader("Máquina B")
+
+        col_rms, col_fft = st.columns(2)
+        with col_rms:
+            st.write("### RMS")
+            st.line_chart(chart_data_b.set_index("tempo")["valor"] * 1.41)
+        with col_fft:
+            st.write("### FFT")
+            st.line_chart(chart_data_b.set_index("tempo")["valor"] * 0.3)
+
         col1, col2, col3 = st.columns(3)
         relacao_pw_b = pot_ativa_max_b - media_pw
         col1.metric("Potência Ativa", f"{pot_ativa_max_b:.2f} W", f"{relacao_pw_b:.2f} W | Média: {media_pw:.2f} W")
@@ -318,13 +330,16 @@ elif escolha_pagina == "Página Inicial":
         col3.metric("Potência Aparente", "1600 VA", "-5%", delta_color="inverse")
 
     with tab3:  # MÁQUINA C
-        st.subheader("RMS")
-        st.line_chart(chart_data * 1.10)
-        st.divider()
-        st.subheader("FFT")
-        st.line_chart(chart_data * 0.35)
-
         st.subheader("Máquina C")
+
+        col_rms, col_fft = st.columns(2)
+        with col_rms:
+            st.write("### RMS")
+            st.line_chart(chart_data_c.set_index("tempo")["valor"] * 1.41)
+        with col_fft:
+            st.write("### FFT")
+            st.line_chart(chart_data_c.set_index("tempo")["valor"] * 0.35)
+
         col1, col2, col3 = st.columns(3)
         relacao_pw_c = pot_ativa_max_c - media_pw
         col1.metric("Potência Ativa", f"{pot_ativa_max_c:.2f} W", f"{relacao_pw_c:.2f} W | Média: {media_pw:.2f} W")
@@ -332,7 +347,6 @@ elif escolha_pagina == "Página Inicial":
         col3.metric("Potência Aparente", "1800 VA", "+15%", delta_color="inverse")
 
     st.divider()
-
 
 # -----------------------------------------------------------------------
 # ELEMENTOS DE TEXTO
