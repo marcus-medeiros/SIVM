@@ -29,8 +29,8 @@ def gerar_dados_eletricos():
         return sinal_fundamental + sinal_3a + sinal_5a + ruido
 
     tensao_a = 127 + gerar_onda(10, 60, n_pontos)
-    tensao_b = 127 + gerar_onda(10, 60, n_pontos, ruido_amp=0.4)
-    tensao_c = 127 + gerar_onda(10, 60, n_pontos, ruido_amp=0.6)
+    tensao_b = 127 + gerar_onda(10, 60, n_pontos, ruido_amp=1)
+    tensao_c = 127 + gerar_onda(10, 60, n_pontos, ruido_amp=2)
 
     corrente_a = 10 + gerar_onda(2, 60, n_pontos, ruido_amp=0.2)
     corrente_b = 8.5 + gerar_onda(1.5, 60, n_pontos, ruido_amp=0.15)
