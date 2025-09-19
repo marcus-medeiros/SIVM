@@ -42,309 +42,84 @@ with st.sidebar:
 # CONTEÚDO DAS PÁGINAS
 # =======================================================================
 
-
 # -----------------------------------------------------------------------
 # PÁGINA INICIAL
 # -----------------------------------------------------------------------
-if escolha_pagina == "Historico":
-    st.title(":zap: Análise de Dados dos Motores")
-    # --- 1. Geração de Dados (sem alterações) ---
-    @st.cache_data
-    def gerar_dados_eletricos():
-        n_pontos = 2 * 24 * 60
-        timestamps = pd.date_range(end=datetime.now(), periods=n_pontos, freq='T')
-        def gerar_serie(base, amp, n):
-            tendencia = np.linspace(0, amp, n)
-            ruido = np.random.normal(0, amp * 0.1, n)
-            return base + tendencia + ruido
-        dados = {
-            'Tensão Fase A': gerar_serie(125, 3, n_pontos), 'Tensão Fase B': gerar_serie(126, 2, n_pontos), 'Tensão Fase C': gerar_serie(124, 4, n_pontos),
-            'Tensão Linha AB': gerar_serie(218, 4, n_pontos), 'Tensão Linha BC': gerar_serie(219, 3, n_pontos), 'Tensão Linha CA': gerar_serie(217, 5, n_pontos),
-            'Corrente A': gerar_serie(10, 2, n_pontos), 'Corrente B': gerar_serie(9, 1.5, n_pontos), 'Corrente C': gerar_serie(11, 2.5, n_pontos),
-        }
-        fp = 0.92
-        for fase in ['A', 'B', 'C']:
-            dados[f'Potência Ativa {fase}'] = dados[f'Tensão Fase {fase}'] * dados[f'Corrente {fase}'] * fp
-            dados[f'Potência Reativa {fase}'] = dados[f'Tensão Fase {fase}'] * dados[f'Corrente {fase}'] * np.sin(np.arccos(fp))
-            dados[f'Potência Aparente {fase}'] = dados[f'Tensão Fase {fase}'] * dados[f'Corrente {fase}']
-        return pd.DataFrame(dados, index=timestamps)
-
-    df_original = gerar_dados_eletricos()
-
-    # ==============================================================================
-    # 2. MENU DE CONTROLES NA BARRA LATERAL (SIDEBAR)
-    # ==============================================================================
-    # !!! ATENÇÃO: Todo este bloco de código deve estar DENTRO de um `with st.sidebar:` !!!
-    # No seu código original, ele estava no corpo principal.
-    st.header("⚙️ Controles do Dashboard")
-
-    # --- Filtro de Período ---
-    st.subheader("Período de Visualização")
-    periodo_selecionado = st.selectbox(
-        label="Selecione o período:",
-        options=["15 Minutos", "1 Hora", "6 Horas", "24 Horas"],
-        index=1
-    )
-
-    # --- Menu para Formato do Timestamp ---
-    formatos_data = {
-        "Dia/Mês Hora:Minuto": "%d/%m %H:%M",
-        "Hora:Minuto:Segundo": "%H:%M:%S",
-        "Dia da Semana (Abrev), Hora": "%a, %Hh",
-        "Mês-Dia": "%m-%d",
-    }
-    
-    #
-    #formato_escolhido_label = st.selectbox(
-    #    "Escolha o formato da data:",
-    #    options=list(formatos_data.keys()),
-    #    index=1
-    #)
-
-    
-    formato_escolhido_str = formatos_data["Hora:Minuto:Segundo"]
-
-    # --- Filtro de Fases Dinâmico ---
-    st.subheader("Filtro de Fases")
-    sufixos_disponiveis = sorted(list(set([col.split()[-1] for col in df_original.columns if len(col.split()[-1]) == 1])))
-    sufixos_selecionados = []
-    cols_filtro = st.columns(len(sufixos_disponiveis))
-    for i, sufixo in enumerate(sufixos_disponiveis):
-        with cols_filtro[i]:
-            if st.checkbox(f'Fase {sufixo}', value=True, key=f'fase_{sufixo}'):
-                sufixos_selecionados.append(sufixo)
-
-    # ==============================================================================
-    # 3. LÓGICA DE FILTRAGEM E PLOTAGEM
-    # ==============================================================================
-
-    # --- Filtragem por Período ---
-    agora = pd.Timestamp.now()
-    deltas = {
-        "15 Minutos": pd.Timedelta(minutes=15),
-        "1 Hora": pd.Timedelta(hours=1),
-        "6 Horas": pd.Timedelta(hours=6),
-        "24 Horas": pd.Timedelta(hours=24)
-    }
-    delta_selecionado = deltas[periodo_selecionado]
-    inicio_periodo = agora - delta_selecionado
-    df_filtrado_tempo = df_original[df_original.index >= inicio_periodo]
-
-    st.markdown(f"Exibindo dados dos **{periodo_selecionado}**. Período: `{inicio_periodo.strftime('%d/%m %H:%M')}` a `{agora.strftime('%d/%m %H:%M')}`")
-
-    if not sufixos_selecionados:
-        st.warning("Selecione pelo menos uma fase na barra lateral.")
-        st.stop()
-
-    # --- Funções Helper ---
-    def filtrar_colunas(todas_as_colunas, sufixos):
-        return [col for col in todas_as_colunas if col.split()[-1] in sufixos]
-
-    ### CORREÇÃO 2: ATUALIZAR A FUNÇÃO DE PLOTAGEM ###
-    def plotar_matplotlib(df_data, titulo, y_label, date_format="%d/%m %H:%M", y_min=None, y_max=None, auto=False):
-        fig, ax = plt.subplots(figsize=(10, 4))
-        if df_data.empty:
-            ax.text(0.5, 0.5, "Nenhum dado para exibir.", horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
-            st.pyplot(fig)
-            return
-        
-        for col in df_data.columns:
-            ax.plot(df_data.index, df_data[col], label=col)
-        
-        formatter = mdates.DateFormatter(date_format)
-        ax.xaxis.set_major_formatter(formatter)
-        
-        ax.set_title(titulo)
-        ax.set_xlabel("Tempo")
-        ax.set_ylabel(y_label)
-        
-        # A lógica agora verifica se o modo 'auto' NÃO está ativado para definir os limites
-        if not auto and y_min is not None and y_max is not None:
-            ax.set_ylim(y_min, y_max)
-            
-        ax.legend(loc='upper left', bbox_to_anchor=(1.02, 1))
-        ax.grid(True, linestyle='--', alpha=0.7)
-        plt.xticks(rotation=45, ha='right')
-        plt.tight_layout(rect=[0, 0, 0.85, 1])
-        st.pyplot(fig)
-
-    # --- Seção de Tensões ---
-    st.header("Tensões")
-    tab_fase, tab_linha = st.tabs(["Tensão de Fase (V)", "Tensão de Linha (V)"])
-
-    with tab_fase:
-        cols = ['Tensão Fase A', 'Tensão Fase B', 'Tensão Fase C']
-        colunas_para_plotar = filtrar_colunas(cols, sufixos_selecionados)
-        if colunas_para_plotar:
-            ### CORREÇÃO 3: PASSAR O FORMATO ESCOLHIDO PARA A FUNÇÃO ###
-            plotar_matplotlib(
-                df_filtrado_tempo[colunas_para_plotar], 
-                "Tensões de Fase por Tempo", 
-                "Tensão (V)",
-                date_format=formato_escolhido_str # <--- Passando o formato aqui
-            )
-
-    # ... e assim por diante para os outros gráficos ...
-    with tab_linha:
-        cols = ['Tensão Linha AB', 'Tensão Linha BC', 'Tensão Linha CA']
-        colunas_para_plotar = [c for c in cols if any(s in c for s in sufixos_selecionados)]
-        if colunas_para_plotar:
-            plotar_matplotlib(
-                df_filtrado_tempo[colunas_para_plotar],
-                "Tensões de Linha por Tempo",
-                "Tensão (V)",
-                date_format=formato_escolhido_str # <--- Passando o formato aqui
-            )
-
-    # (O mesmo deve ser feito para os gráficos de Corrente e Potência)
-    st.divider()
-    st.header("Corrente (A)")
-    cols_corrente = ['Corrente A', 'Corrente B', 'Corrente C']
-    colunas_para_plotar_corrente = filtrar_colunas(cols_corrente, sufixos_selecionados)
-    if colunas_para_plotar_corrente:
-        plotar_matplotlib(
-            df_filtrado_tempo[colunas_para_plotar_corrente], 
-            "Correntes por Tempo", 
-            "Corrente (A)",
-            date_format=formato_escolhido_str # <--- Passando o formato aqui
-        )
-    
-    st.divider()
-
-    # --- 5. Seção de Potências (com Colunas e Matplotlib) ---
-    st.header("Potências")
-    # ### CORREÇÃO DE LAYOUT: Mudei para 3 colunas para acomodar todos os gráficos ###
-    col_ativa, col_reativa = st.columns(2)
-
-    with col_ativa:
-        st.subheader("Ativa (W)")
-        cols_pot_ativa = ['Potência Ativa A', 'Potência Ativa B', 'Potência Ativa C']
-        colunas_para_plotar = filtrar_colunas(cols_pot_ativa, sufixos_selecionados)
-        if colunas_para_plotar:
-            # ### CORREÇÃO 1: Usar o DataFrame filtrado por tempo ###
-            df_para_plotar = df_filtrado_tempo[colunas_para_plotar]
-            
-            # ### CORREÇÃO 2: Passar o formato da data ###
-            plotar_matplotlib(
-                df_para_plotar, 
-                "", 
-                "Potência (W)", 
-                auto=True, # Deixando o eixo Y automático para potências
-                date_format=formato_escolhido_str
-            )
-        else:
-            st.info("Nenhuma Potência Ativa selecionada.")
-
-    with col_reativa:
-        st.subheader("Reativa (VAr)")
-        cols_pot_reativa = ['Potência Reativa A', 'Potência Reativa B', 'Potência Reativa C']
-        colunas_para_plotar = filtrar_colunas(cols_pot_reativa, sufixos_selecionados)
-        if colunas_para_plotar:
-            # ### CORREÇÃO 1: Usar o DataFrame filtrado por tempo ###
-            df_para_plotar = df_filtrado_tempo[colunas_para_plotar]
-            
-            # ### CORREÇÃO 2: Passar o formato da data ###
-            plotar_matplotlib(
-                df_para_plotar, 
-                "", 
-                "Potência (VAr)", 
-                auto=True,
-                date_format=formato_escolhido_str
-            )
-        else:
-            st.info("Nenhuma Potência Reativa selecionada.")
-            
-    st.subheader("Aparente (VA)")
-    cols_pot_aparente = ['Potência Aparente A', 'Potência Aparente B', 'Potência Aparente C']
-    colunas_para_plotar = filtrar_colunas(cols_pot_aparente, sufixos_selecionados)
-    if colunas_para_plotar:
-        # ### CORREÇÃO 1: Usar o DataFrame filtrado por tempo ###
-        df_para_plotar = df_filtrado_tempo[colunas_para_plotar]
-        
-        # ### CORREÇÃO 2: Passar o formato da data ###
-        plotar_matplotlib(
-            df_para_plotar, 
-            "", 
-            "Potência (VA)", 
-            auto=True,
-            date_format=formato_escolhido_str
-        )
-    else:
-        st.info("Nenhuma Potência Aparente selecionada.")
-
-# -----------------------------------------------------------------------
-# GERAL
-# -----------------------------------------------------------------------
-elif escolha_pagina == "Página Inicial":
+if escolha_pagina == "Página Inicial":
     st.header("🖥️ Geral")
 
-    # Potências máximas (substitua pelos valores reais se quiser)
-    pot_ativa_max_a = 10
-    pot_ativa_max_b = 12
-    pot_ativa_max_c = 15
+    # --- Seleciona colunas de cada fase ---
+    dados_a = df_original[['Tensão Fase A', 'Corrente A', 'Potência Ativa A', 'Potência Reativa A', 'Potência Aparente A']]
+    dados_b = df_original[['Tensão Fase B', 'Corrente B', 'Potência Ativa B', 'Potência Reativa B', 'Potência Aparente B']]
+    dados_c = df_original[['Tensão Fase C', 'Corrente C', 'Potência Ativa C', 'Potência Reativa C', 'Potência Aparente C']]
 
-    # Cálculo da média
+    pot_ativa_max_a = dados_a['Potência Ativa A'].max()
+    pot_ativa_max_b = dados_b['Potência Ativa B'].max()
+    pot_ativa_max_c = dados_c['Potência Ativa C'].max()
     media_pw = (pot_ativa_max_a + pot_ativa_max_b + pot_ativa_max_c) / 3
+
     st.header("Análise das Tensões e Correntes")
-
-    # Filtragem de dados para cada máquina (supondo que chart_data seja um DataFrame com colunas 'fase' e 'valor')
-    # Exemplo: chart_data = pd.DataFrame({"tempo": [...], "fase": ["A","B","C",...], "valor": [...]})
-    chart_data_a = chart_data[chart_data["fase"] == "A"]
-    chart_data_b = chart_data[chart_data["fase"] == "B"]
-    chart_data_c = chart_data[chart_data["fase"] == "C"]
-
     tab1, tab2, tab3 = st.tabs(["Máquina A", "Máquina B", "Máquina C"])
-    
-    with tab1:  # MÁQUINA A
+
+    # ---------------------------
+    # MÁQUINA A
+    # ---------------------------
+    with tab1:
         st.subheader("Máquina A")
 
         col_rms, col_fft = st.columns(2)
         with col_rms:
             st.write("### RMS")
-            st.line_chart(chart_data_a.set_index("tempo")["valor"] * 1.41)
+            st.line_chart(dados_a[['Tensão Fase A', 'Corrente A']])
         with col_fft:
             st.write("### FFT")
-            st.line_chart(chart_data_a.set_index("tempo")["valor"] * 0.25)
+            st.line_chart(np.abs(np.fft.rfft(dados_a['Tensão Fase A'])))
 
         col1, col2, col3 = st.columns(3)
         relacao_pw_a = pot_ativa_max_a - media_pw
         col1.metric("Potência Ativa", f"{pot_ativa_max_a:.2f} W", f"{relacao_pw_a:.2f} W | Média: {media_pw:.2f} W")
-        col2.metric("Potência Reativa", "800 var", "-8%")
-        col3.metric("Potência Aparente", "1500 VA", "12%", delta_color="inverse")
+        col2.metric("Potência Reativa", f"{dados_a['Potência Reativa A'].mean():.2f} var", "-8%")
+        col3.metric("Potência Aparente", f"{dados_a['Potência Aparente A'].mean():.2f} VA", "12%", delta_color="inverse")
 
-    with tab2:  # MÁQUINA B
+    # ---------------------------
+    # MÁQUINA B
+    # ---------------------------
+    with tab2:
         st.subheader("Máquina B")
 
         col_rms, col_fft = st.columns(2)
         with col_rms:
             st.write("### RMS")
-            st.line_chart(chart_data_b.set_index("tempo")["valor"] * 1.41)
+            st.line_chart(dados_b[['Tensão Fase B', 'Corrente B']])
         with col_fft:
             st.write("### FFT")
-            st.line_chart(chart_data_b.set_index("tempo")["valor"] * 0.3)
+            st.line_chart(np.abs(np.fft.rfft(dados_b['Tensão Fase B'])))
 
         col1, col2, col3 = st.columns(3)
         relacao_pw_b = pot_ativa_max_b - media_pw
         col1.metric("Potência Ativa", f"{pot_ativa_max_b:.2f} W", f"{relacao_pw_b:.2f} W | Média: {media_pw:.2f} W")
-        col2.metric("Potência Reativa", "900 var", "+2%")
-        col3.metric("Potência Aparente", "1600 VA", "-5%", delta_color="inverse")
+        col2.metric("Potência Reativa", f"{dados_b['Potência Reativa B'].mean():.2f} var", "+2%")
+        col3.metric("Potência Aparente", f"{dados_b['Potência Aparente B'].mean():.2f} VA", "-5%", delta_color="inverse")
 
-    with tab3:  # MÁQUINA C
+    # ---------------------------
+    # MÁQUINA C
+    # ---------------------------
+    with tab3:
         st.subheader("Máquina C")
 
         col_rms, col_fft = st.columns(2)
         with col_rms:
             st.write("### RMS")
-            st.line_chart(chart_data_c.set_index("tempo")["valor"] * 1.41)
+            st.line_chart(dados_c[['Tensão Fase C', 'Corrente C']])
         with col_fft:
             st.write("### FFT")
-            st.line_chart(chart_data_c.set_index("tempo")["valor"] * 0.35)
+            st.line_chart(np.abs(np.fft.rfft(dados_c['Tensão Fase C'])))
 
         col1, col2, col3 = st.columns(3)
         relacao_pw_c = pot_ativa_max_c - media_pw
         col1.metric("Potência Ativa", f"{pot_ativa_max_c:.2f} W", f"{relacao_pw_c:.2f} W | Média: {media_pw:.2f} W")
-        col2.metric("Potência Reativa", "1000 var", "+5%")
-        col3.metric("Potência Aparente", "1800 VA", "+15%", delta_color="inverse")
+        col2.metric("Potência Reativa", f"{dados_c['Potência Reativa C'].mean():.2f} var", "+5%")
+        col3.metric("Potência Aparente", f"{dados_c['Potência Aparente C'].mean():.2f} VA", "+15%", delta_color="inverse")
 
     st.divider()
 
