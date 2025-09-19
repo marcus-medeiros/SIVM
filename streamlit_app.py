@@ -130,7 +130,7 @@ with st.sidebar:
 
     # Exibir indicadores na sidebar
     with st.sidebar:
-        st.markdown("### ⚡ Status das Máquinas")
+        st.markdown("###  --- Status das Máquinas")
         st.markdown(f" ->  **Máquina A:** {indicador_alertas(tabela_a)}")
         st.markdown(f" ->  **Máquina B:** {indicador_alertas(tabela_b)}")
         st.markdown(f" ->  **Máquina C:** {indicador_alertas(tabela_c)}")
@@ -139,7 +139,7 @@ with st.sidebar:
 # CONFIGURAÇÕES
 # =======================================================================
 if escolha_pagina == "Configurações":
-    st.subheader(" Home > Configurações")
+    st.markdown("###  Pagina Principal > **Menu**")
     max_tensao = st.number_input("Valor máximo da tensão (V)", value=st.session_state["limites_tensao"][1], step=1.0)
     min_tensao = st.number_input("Valor mínimo da tensão (V)", value=st.session_state["limites_tensao"][0], step=1.0)
     
