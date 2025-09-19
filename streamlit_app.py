@@ -1,8 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import time
-import matplotlib.pyplot as plt
 from datetime import datetime
 
 # =======================================================================
@@ -38,16 +36,6 @@ def gerar_dados_eletricos():
 df_original = gerar_dados_eletricos()
 
 # =======================================================================
-# CONFIGURAÇÃO DA PÁGINA
-# =======================================================================
-st.set_page_config(
-    page_title="SIVM",
-    page_icon=":zap:",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# =======================================================================
 # SIDEBAR
 # =======================================================================
 with st.sidebar:
@@ -64,7 +52,7 @@ with st.sidebar:
 if escolha_pagina == "Página Inicial":
     st.header("🖥️ Geral")
 
-    # Filtrando colunas por fase
+    # Dados individuais por máquina (sem mexer na estrutura original)
     dados_a = df_original[['Tensão Fase A', 'Corrente A', 'Potência Ativa A', 'Potência Reativa A', 'Potência Aparente A']]
     dados_b = df_original[['Tensão Fase B', 'Corrente B', 'Potência Ativa B', 'Potência Reativa B', 'Potência Aparente B']]
     dados_c = df_original[['Tensão Fase C', 'Corrente C', 'Potência Ativa C', 'Potência Reativa C', 'Potência Aparente C']]
@@ -78,30 +66,41 @@ if escolha_pagina == "Página Inicial":
     tab1, tab2, tab3 = st.tabs(["Máquina A", "Máquina B", "Máquina C"])
 
     # Função auxiliar para exibir cada aba
-    def exibir_maquina(nome_maquina, dados, pot_ativa_max, delta_pot):
+    def exibir_maquina(nome_maquina, tensao, corrente, pot_ativa, pot_reativa, pot_aparente, pot_ativa_max, delta_pot):
         st.subheader(f"{nome_maquina}")
 
         col_rms, col_fft = st.columns(2)
+
+        # Apenas uma curva no RMS (tensão)
         with col_rms:
-            st.write("### RMS")
-            st.line_chart(dados.iloc[:, [0, 1]])  # Tensão + Corrente
+            st.write("### RMS (Tensão)")
+            st.line_chart(tensao)
+
+        # Apenas uma curva no FFT (da tensão)
         with col_fft:
-            st.write("### FFT")
-            fft_vals = np.abs(np.fft.rfft(dados.iloc[:, 0]))  # FFT da tensão
-            st.line_chart(fft_vals)
+            st.write("### FFT (Tensão)")
+            fft_vals = np.abs(np.fft.rfft(tensao.values))  # FFT da tensão
+            fft_df = pd.DataFrame({"FFT": fft_vals})
+            st.line_chart(fft_df)
 
         col1, col2, col3 = st.columns(3)
         col1.metric("Potência Ativa", f"{pot_ativa_max:.2f} W", f"{delta_pot:.2f} W | Média: {media_pw:.2f} W")
-        col2.metric("Potência Reativa", f"{dados.iloc[:, 3].mean():.2f} var", "-8%")
-        col3.metric("Potência Aparente", f"{dados.iloc[:, 4].mean():.2f} VA", "12%", delta_color="inverse")
+        col2.metric("Potência Reativa", f"{pot_reativa.mean():.2f} var", "-8%")
+        col3.metric("Potência Aparente", f"{pot_aparente.mean():.2f} VA", "12%", delta_color="inverse")
 
     with tab1:
-        exibir_maquina("Máquina A", dados_a, pot_ativa_max_a, pot_ativa_max_a - media_pw)
+        exibir_maquina("Máquina A", dados_a['Tensão Fase A'], dados_a['Corrente A'],
+                       dados_a['Potência Ativa A'], dados_a['Potência Reativa A'], dados_a['Potência Aparente A'],
+                       pot_ativa_max_a, pot_ativa_max_a - media_pw)
 
     with tab2:
-        exibir_maquina("Máquina B", dados_b, pot_ativa_max_b, pot_ativa_max_b - media_pw)
+        exibir_maquina("Máquina B", dados_b['Tensão Fase B'], dados_b['Corrente B'],
+                       dados_b['Potência Ativa B'], dados_b['Potência Reativa B'], dados_b['Potência Aparente B'],
+                       pot_ativa_max_b, pot_ativa_max_b - media_pw)
 
     with tab3:
-        exibir_maquina("Máquina C", dados_c, pot_ativa_max_c, pot_ativa_max_c - media_pw)
+        exibir_maquina("Máquina C", dados_c['Tensão Fase C'], dados_c['Corrente C'],
+                       dados_c['Potência Ativa C'], dados_c['Potência Reativa C'], dados_c['Potência Aparente C'],
+                       pot_ativa_max_c, pot_ativa_max_c - media_pw)
 
     st.divider()
