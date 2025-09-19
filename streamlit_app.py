@@ -83,8 +83,9 @@ with st.sidebar:
 # =======================================================================
 if escolha_pagina == "Configurações":
     st.subheader("⚙️ Configurações de Limites dos Gráficos")
-    min_tensao = st.number_input("Valor mínimo da tensão (V)", value=st.session_state["limites_tensao"][0], step=1.0)
     max_tensao = st.number_input("Valor máximo da tensão (V)", value=st.session_state["limites_tensao"][1], step=1.0)
+    min_tensao = st.number_input("Valor mínimo da tensão (V)", value=st.session_state["limites_tensao"][0], step=1.0)
+    
 
     if st.button("Salvar limites"):
         st.session_state["limites_tensao"] = (min_tensao, max_tensao)
