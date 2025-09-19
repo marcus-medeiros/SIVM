@@ -142,11 +142,6 @@ with st.sidebar:
 if escolha_pagina == "Configurações":
     st.markdown("#### Configurações")
 
-    # Mostrar limites atuais SEM senha
-    st.markdown(f"**Limite atual mínimo:** `{st.session_state['limites_tensao'][0]} V`")
-    st.markdown(f"**Limite atual máximo:** `{st.session_state['limites_tensao'][1]} V`")
-    st.divider()
-
     # Campo para senha
     senha = st.text_input("🔑 Digite a senha para alterar os limites:", type="password")
 
