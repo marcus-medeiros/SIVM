@@ -139,19 +139,28 @@ with st.sidebar:
 # =======================================================================
 # CONFIGURAÇÕES
 # =======================================================================
+
 if escolha_pagina == "Configurações":
     st.markdown("#### Configurações")
-    max_tensao = st.number_input("Valor máximo da tensão (V)", value=st.session_state["limites_tensao"][1], step=1.0)
-    min_tensao = st.number_input("Valor mínimo da tensão (V)", value=st.session_state["limites_tensao"][0], step=1.0)
     
+    # Campo para senha
+    senha = st.text_input("Digite a senha para alterar os limites:", type="password")
+    
+    if senha == "admin":
+        st.success("✅ Acesso liberado. Agora você pode alterar os limites.")
+        max_tensao = st.number_input("Valor máximo da tensão (V)", value=st.session_state["limites_tensao"][1], step=1.0)
+        min_tensao = st.number_input("Valor mínimo da tensão (V)", value=st.session_state["limites_tensao"][0], step=1.0)
 
-    if st.button("Salvar limites"):
-        if (min_tensao < max_tensao):
-            st.session_state["limites_tensao"] = (min_tensao, max_tensao)
-            st.success(f"✅ Limites salvos: {min_tensao} V - {max_tensao} V")
-        else: 
-            st.error((f"Limite Inferior: {min_tensao}V é superior ao limite máximo {max_tensao} V"))
-
+        if st.button("Salvar limites"):
+            if min_tensao < max_tensao:
+                st.session_state["limites_tensao"] = (min_tensao, max_tensao)
+                st.success(f"✅ Limites salvos: {min_tensao} V - {max_tensao} V")
+            else:
+                st.error(f"❌ O limite inferior ({min_tensao} V) é maior que o limite superior ({max_tensao} V).")
+    elif senha != "":
+        st.error("❌ Senha incorreta! Tente novamente.")
+    else:
+        st.info("🔒 Digite a senha para alterar os limites.")
 # =======================================================================
 # PÁGINA HISTÓRICO
 # =======================================================================
