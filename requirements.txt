@@ -1,6 +1,6 @@
 streamlit
 pandas
 numpy
-streamlit-option-menu
 altair
-io
+streamlit-option-menu
+xlsxwriter
