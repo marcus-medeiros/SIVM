@@ -6,7 +6,13 @@ from datetime import datetime
 from streamlit_option_menu import option_menu
 
 # =======================================================================
-# GERAÇÃO DE DADOS SIMULADOS (df_original)
+# INICIALIZAÇÃO DOS ESTADOS (para não perder valores ao trocar de página)
+# =======================================================================
+if "limites_tensao" not in st.session_state:
+    st.session_state["limites_tensao"] = (120.0, 140.0)
+
+# =======================================================================
+# GERAÇÃO DE DADOS SIMULADOS
 # =======================================================================
 @st.cache_data
 def gerar_dados_eletricos():
@@ -55,7 +61,7 @@ tempo_op_fix = {"A": 520, "B": 610, "C": 450}
 falhas_fix = {"A": 0, "B": 1, "C": 3}
 
 # =======================================================================
-# SIDEBAR MODERNA
+# SIDEBAR
 # =======================================================================
 with st.sidebar:
     st.image("Logo_v2.png", width=120)
@@ -76,21 +82,19 @@ with st.sidebar:
 # CONFIGURAÇÕES
 # =======================================================================
 if escolha_pagina == "Configurações":
-    st.subheader("Configurações de Limites dos Gráficos")
-    st.markdown("Defina o limite mínimo e máximo das tensões")
+    st.subheader("⚙️ Configurações de Limites dos Gráficos")
+    min_tensao = st.number_input("Valor mínimo da tensão (V)", value=st.session_state["limites_tensao"][0], step=1.0)
+    max_tensao = st.number_input("Valor máximo da tensão (V)", value=st.session_state["limites_tensao"][1], step=1.0)
 
-    min_tensao = st.number_input("Valor mínimo da tensão (V)", value=120.0, step=1.0)
-    max_tensao = st.number_input("Valor máximo da tensão (V)", value=140.0, step=1.0)
-
-    st.session_state["limites_tensao"] = (min_tensao, max_tensao)
-    st.success(f"Limites definidos: {min_tensao} V - {max_tensao} V")
+    if st.button("Salvar limites"):
+        st.session_state["limites_tensao"] = (min_tensao, max_tensao)
+        st.success(f"✅ Limites salvos: {min_tensao} V - {max_tensao} V")
 
 # =======================================================================
 # PÁGINA INICIAL
 # =======================================================================
 if escolha_pagina == "Página Inicial":
-    limites = st.session_state.get("limites_tensao", (None, None))
-    min_limite, max_limite = limites
+    min_limite, max_limite = st.session_state["limites_tensao"]
 
     dados_a = df_original[['Tensão Fase A', 'Potência Ativa A']]
     dados_b = df_original[['Tensão Fase B', 'Potência Ativa B']]
@@ -106,26 +110,34 @@ if escolha_pagina == "Página Inicial":
         col2.metric("Tempo de Operação", f"{tempo} h")
         col3.metric("Falhas Detectadas", f"{falhas}")
 
-        st.markdown("### RMS (Tensão)")
+        col_rms, col_fft = st.columns(2)
 
-        df_tensao = pd.DataFrame({"timestamp": tensao.index, "tensao": tensao.values})
+        with col_rms:
+            st.markdown("### RMS (Tensão)")
+            df_tensao = pd.DataFrame({"timestamp": tensao.index, "tensao": tensao.values})
+            chart_rms = alt.Chart(df_tensao).mark_line(color="red").encode(
+                x="timestamp:T", y="tensao:Q"
+            )
+            if min_limite and max_limite:
+                linha_min = alt.Chart(pd.DataFrame({"y": [min_limite]})).mark_rule(
+                    strokeDash=[4, 4], color="gray"
+                ).encode(y="y:Q")
+                linha_max = alt.Chart(pd.DataFrame({"y": [max_limite]})).mark_rule(
+                    strokeDash=[4, 4], color="gray"
+                ).encode(y="y:Q")
+                chart_rms = chart_rms + linha_min + linha_max
+            st.altair_chart(chart_rms, use_container_width=True)
 
-        chart = alt.Chart(df_tensao).mark_line(color="red").encode(
-            x="timestamp:T",
-            y="tensao:Q"
-        )
-
-        # Adiciona linhas horizontais tracejadas se os limites existirem
-        if min_limite is not None and max_limite is not None:
-            linha_min = alt.Chart(pd.DataFrame({"y": [min_limite]})).mark_rule(
-                strokeDash=[4, 4], color="gray"
-            ).encode(y="y:Q")
-            linha_max = alt.Chart(pd.DataFrame({"y": [max_limite]})).mark_rule(
-                strokeDash=[4, 4], color="gray"
-            ).encode(y="y:Q")
-            chart = chart + linha_min + linha_max
-
-        st.altair_chart(chart, use_container_width=True)
+        with col_fft:
+            st.markdown("### FFT (Tensão)")
+            fft_vals = np.abs(np.fft.rfft(tensao.values))
+            freq = np.fft.rfftfreq(len(tensao.values), d=1/1920)  # considerando fs=60*32=1920Hz
+            df_fft = pd.DataFrame({"freq": freq, "FFT": fft_vals})
+            chart_fft = alt.Chart(df_fft).mark_line(color="red").encode(
+                x=alt.X("freq:Q", title="Frequência (Hz)"),
+                y=alt.Y("FFT:Q", title="Amplitude")
+            )
+            st.altair_chart(chart_fft, use_container_width=True)
 
     with tab1:
         exibir_maquina("Máquina A", dados_a['Tensão Fase A'], confianca_fix["A"], tempo_op_fix["A"], falhas_fix["A"])
