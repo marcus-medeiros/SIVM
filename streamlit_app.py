@@ -200,7 +200,7 @@ if escolha_pagina == "Histórico":
             tabela_b.to_excel(writer, sheet_name="Máquina B")
             tabela_c.to_excel(writer, sheet_name="Máquina C")
         st.download_button(
-            label="📥 Baixar Tabelas de Alarmes",
+            label="📥 Baixar Tabelas de Alarmes (.xlsx)",
             data=buffer.getvalue(),
             file_name="alarm_data.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
