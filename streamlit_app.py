@@ -116,8 +116,9 @@ if escolha_pagina == "Página Inicial":
         with col_rms:
             st.markdown("### RMS (Tensão)")
             df_tensao = pd.DataFrame({"timestamp": tensao.index, "tensao": tensao.values})
-            chart_rms = alt.Chart(df_tensao).mark_line(color="red").encode(
-                x="timestamp:T", y="tensao:Q"
+            chart_rms = alt.Chart(df_tensao).mark_line(color="red", strokeWidth=2).encode(
+                x="timestamp:T",
+                y=alt.Y("tensao:Q", scale=alt.Scale(nice=True))
             )
             if min_limite and max_limite:
                 linha_min = alt.Chart(pd.DataFrame({"y": [min_limite]})).mark_rule(
