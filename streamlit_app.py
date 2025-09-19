@@ -62,7 +62,6 @@ if escolha_pagina == "Página Inicial":
     pot_ativa_max_c = dados_c['Potência Ativa C'].max()
     media_pw = (pot_ativa_max_a + pot_ativa_max_b + pot_ativa_max_c) / 3
 
-    st.header("Análise das Tensões e Correntes")
     tab1, tab2, tab3 = st.tabs(["Máquina A", "Máquina B", "Máquina C"])
 
     # Função auxiliar para exibir cada aba
