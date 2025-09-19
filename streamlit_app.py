@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # =======================================================================
 # GERAÇÃO DE DADOS SIMULADOS (df_original)
@@ -52,7 +52,7 @@ with st.sidebar:
 if escolha_pagina == "Página Inicial":
     st.header("🖥️ Geral")
 
-    # Dados individuais por máquina (sem mexer na estrutura original)
+    # Dados individuais por máquina
     dados_a = df_original[['Tensão Fase A', 'Corrente A', 'Potência Ativa A', 'Potência Reativa A', 'Potência Aparente A']]
     dados_b = df_original[['Tensão Fase B', 'Corrente B', 'Potência Ativa B', 'Potência Reativa B', 'Potência Aparente B']]
     dados_c = df_original[['Tensão Fase C', 'Corrente C', 'Potência Ativa C', 'Potência Reativa C', 'Potência Aparente C']]
@@ -69,27 +69,35 @@ if escolha_pagina == "Página Inicial":
     def exibir_maquina(nome_maquina, tensao, corrente, pot_ativa, pot_reativa, pot_aparente, pot_ativa_max, delta_pot):
         st.subheader(f"{nome_maquina}")
 
+        # ---- NOVOS MÉTRICOS ----
+        col1, col2, col3 = st.columns(3)
+        confianca = max(0, min(100, 100 - abs(delta_pot) / media_pw * 100))  # confiança comparada à média
+        tempo_operacao = np.random.randint(100, 1000)  # horas de operação simuladas
+        falhas = np.random.randint(0, 5)  # falhas detectadas simuladas
+
+        col1.metric("Confiança do Equipamento", f"{confianca:.1f} %")
+        col2.metric("Tempo de Operação", f"{tempo_operacao} h")
+        col3.metric("Falhas Detectadas", f"{falhas}")
+
+        st.markdown("---")
+
+        # ---- MÉTRICAS ELÉTRICAS ----
         col1, col2, col3 = st.columns(3)
         col1.metric("Potência Ativa", f"{pot_ativa_max:.2f} W", f"{delta_pot:.2f} W | Média: {media_pw:.2f} W")
         col2.metric("Potência Reativa", f"{pot_reativa.mean():.2f} var", "-8%")
         col3.metric("Potência Aparente", f"{pot_aparente.mean():.2f} VA", "12%", delta_color="inverse")
 
-        
+        # ---- GRÁFICOS ----
         col_rms, col_fft = st.columns(2)
-
-        # Apenas uma curva no RMS (tensão)
         with col_rms:
             st.write("### RMS (Tensão)")
             st.line_chart(tensao)
 
-        # Apenas uma curva no FFT (da tensão)
         with col_fft:
             st.write("### FFT (Tensão)")
             fft_vals = np.abs(np.fft.rfft(tensao.values))  # FFT da tensão
             fft_df = pd.DataFrame({"FFT": fft_vals})
             st.line_chart(fft_df)
-
-
 
     with tab1:
         exibir_maquina("Máquina A", dados_a['Tensão Fase A'], dados_a['Corrente A'],
