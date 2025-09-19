@@ -122,9 +122,9 @@ with st.sidebar:
     # Exibir indicadores na sidebar
     with st.sidebar:
         st.markdown("### ⚡ Status das Máquinas")
-        st.markdown(f"**Máquina A:** {indicador_alertas(tabela_a)}")
-        st.markdown(f"**Máquina B:** {indicador_alertas(tabela_b)}")
-        st.markdown(f"**Máquina C:** {indicador_alertas(tabela_c)}")
+        st.markdown(f" -> **Máquina A:** {indicador_alertas(tabela_a)}")
+        st.markdown(f" ->**Máquina B:** {indicador_alertas(tabela_b)}")
+        st.markdown(f" -> **Máquina C:** {indicador_alertas(tabela_c)}")
         st.markdown("---")
 # =======================================================================
 # CONFIGURAÇÕES
