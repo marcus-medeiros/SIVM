@@ -155,7 +155,7 @@ if escolha_pagina == "Configurações":
 # PÁGINA HISTÓRICO
 # =======================================================================
 if escolha_pagina == "Histórico":
-    st.subheader("📊 Histórico de Alarmes")
+    st.markdown("#### Histórico")
 
     min_limite, max_limite = st.session_state["limites_tensao"]
 
@@ -193,6 +193,7 @@ if escolha_pagina == "Histórico":
 # PÁGINA INICIAL
 # =======================================================================
 if escolha_pagina == "Página Inicial":
+    st.markdown("#### Página Inicial")
     min_limite, max_limite = st.session_state["limites_tensao"]
 
     dados_a = df_original[['Tensão Fase A', 'Potência Ativa A']]
