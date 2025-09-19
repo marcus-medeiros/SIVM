@@ -87,7 +87,6 @@ if escolha_pagina == "Historico":
     )
 
     # --- Menu para Formato do Timestamp ---
-    st.subheader("Formato do Eixo X (Tempo)")
     formatos_data = {
         "Dia/Mês Hora:Minuto": "%d/%m %H:%M",
         "Hora:Minuto:Segundo": "%H:%M:%S",
@@ -279,94 +278,62 @@ if escolha_pagina == "Historico":
 elif escolha_pagina == "Página Inicial":
     st.header("🖥️ Geral")
 
-    st.header("Análise das Tensões e Correntes")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("Tensões")
-        tab1, tab2 = st.tabs(["Tensão de fase", "Tensão de linha"])
-        with tab1:
-            st.line_chart(chart_data*1.41)
-        with tab2:
-            st.line_chart(chart_data)
-        st.divider()
-
-    with col2:
-        st.subheader("Corrente")
-        st.markdown("As correntes de fase e linha desse sistema de potência são iguais, portanto, não há necessário distinção.")
-        st.line_chart(chart_data*0.1)
-        st.divider()
-
-
-    st.header("Análise das Potências")
-    st.markdown("Analisando-se as potências, pode-se analisar-se seus valores atuais, estimativas de fator de potência, assim como seus máximos")
-
-    st.header("Potências Máximas")
-
+    # Potências máximas (substitua pelos valores reais se quiser)
     pot_ativa_max_a = 10
     pot_ativa_max_b = 12
     pot_ativa_max_c = 15
 
-    media_pw = (pot_ativa_max_a + pot_ativa_max_b + pot_ativa_max_c)/3
+    # Cálculo da média
+    media_pw = (pot_ativa_max_a + pot_ativa_max_b + pot_ativa_max_c) / 3
+    st.header("Análise das Tensões e Correntes")
 
-    tab1, tab2, tab3 = st.tabs(["Fase A", "Fase B", "Fase C"])
-    with tab1:
-            st.subheader("Fase A")
-            col1, col2, col3 = st.columns(3)
-            relacao_pw_a = pot_ativa_max_a - media_pw
-            col1.metric("Potência Ativa", f"{pot_ativa_max_a:.2f} W", f"{relacao_pw_a:.2f} W | Média: {media_pw:.2f} W")
-            col2.metric("Potência Reativa", "800 var", "-8%")
-            col3.metric("Potência Aparente", "1500 VA", "12%", delta_color="inverse")
-    with tab2:
-            st.subheader("Fase B")
-            col1, col2, col3 = st.columns(3)
-            relacao_pw_a = pot_ativa_max_b - media_pw
-            col1.metric("Potência Ativa", f"{pot_ativa_max_a:.2f} W", f"{relacao_pw_a:.2f} W | Média: {media_pw:.2f} W")
-            col2.metric("Potência Reativa", "800 var", "-8%")
-            col3.metric("Potência Aparente", "1500 VA", "12%", delta_color="inverse")
-    with tab3:
-            st.subheader("Fase C")
-            col1, col2, col3 = st.columns(3)
-            relacao_pw_a = pot_ativa_max_c - media_pw
-            col1.metric("Potência Ativa", f"{pot_ativa_max_a:.2f} W", f"{relacao_pw_a:.2f} W | Média: {media_pw:.2f} W")
-            col2.metric("Potência Reativa", "800 var", "-8%")
-            col3.metric("Potência Aparente", "1500 VA", "12%", delta_color="inverse")
+    tab1, tab2, tab3 = st.tabs(["Máquina A", "Máquina B", "Máquina C"])
+    
+    with tab1:  # MÁQUINA A
+        st.subheader("RMS")
+        st.line_chart(chart_data * 1.41)
+        st.divider()
+        st.subheader("FFT")
+        st.line_chart(chart_data * 0.25)
+
+        st.subheader("Máquina A")
+        col1, col2, col3 = st.columns(3)
+        relacao_pw_a = pot_ativa_max_a - media_pw
+        col1.metric("Potência Ativa", f"{pot_ativa_max_a:.2f} W", f"{relacao_pw_a:.2f} W | Média: {media_pw:.2f} W")
+        col2.metric("Potência Reativa", "800 var", "-8%")
+        col3.metric("Potência Aparente", "1500 VA", "12%", delta_color="inverse")
+
+    with tab2:  # MÁQUINA B
+        st.subheader("RMS")
+        st.line_chart(chart_data * 1.25)
+        st.divider()
+        st.subheader("FFT")
+        st.line_chart(chart_data * 0.3)
+
+        st.subheader("Máquina B")
+        col1, col2, col3 = st.columns(3)
+        relacao_pw_b = pot_ativa_max_b - media_pw
+        col1.metric("Potência Ativa", f"{pot_ativa_max_b:.2f} W", f"{relacao_pw_b:.2f} W | Média: {media_pw:.2f} W")
+        col2.metric("Potência Reativa", "900 var", "+2%")
+        col3.metric("Potência Aparente", "1600 VA", "-5%", delta_color="inverse")
+
+    with tab3:  # MÁQUINA C
+        st.subheader("RMS")
+        st.line_chart(chart_data * 1.10)
+        st.divider()
+        st.subheader("FFT")
+        st.line_chart(chart_data * 0.35)
+
+        st.subheader("Máquina C")
+        col1, col2, col3 = st.columns(3)
+        relacao_pw_c = pot_ativa_max_c - media_pw
+        col1.metric("Potência Ativa", f"{pot_ativa_max_c:.2f} W", f"{relacao_pw_c:.2f} W | Média: {media_pw:.2f} W")
+        col2.metric("Potência Reativa", "1000 var", "+5%")
+        col3.metric("Potência Aparente", "1800 VA", "+15%", delta_color="inverse")
+
     st.divider()
 
-    st.header("Fator de Potência")
-    fp_a = 0.82
-    fp_b = 0.83
-    fp_c = 0.84
-
-    media_fp = (fp_a + fp_b + fp_c)/3
-
-    rel_fp_a = fp_a - media_fp
-    rel_fp_b = fp_b - media_fp
-    rel_fp_c = fp_c - media_fp
-
-
-    col1, col2, col3 = st.columns(3)
-    col1.metric("FP (A)", f"{fp_a:.2f}", f"{rel_fp_a:.2f}| Média: {media_fp:.2f}")
-    col2.metric("FP (B)", f"{fp_b:.2f}", f"{rel_fp_b:.2f}| Média: {media_fp:.2f}")
-    col3.metric("FP (C)", f"{fp_c:.2f}", f"{rel_fp_c:.2f}| Média: {media_fp:.2f}")
-    st.divider()
-
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col1:
-        st.subheader("POTÊNCIA ATIVA")
-        st.line_chart(chart_data)
-        st.divider()
-
-    with col2:
-        st.subheader("POTÊNCIA REATIVA")
-        st.line_chart(chart_data)
-        st.divider()
-
-    with col3:
-        st.subheader("POTÊNCIA APARENTE")
-        st.line_chart(chart_data)
-        st.divider()
-
+    
 # -----------------------------------------------------------------------
 # ELEMENTOS DE TEXTO
 # -----------------------------------------------------------------------
