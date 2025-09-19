@@ -16,7 +16,7 @@ chart_data = pd.DataFrame(
 # st.set_page_config() deve ser o primeiro comando Streamlit no script.
 # =======================================================================
 st.set_page_config(
-    page_title="Técnicas de Medição",
+    page_title="SIVM",
     page_icon=":zap:",
     layout="wide",
     initial_sidebar_state="expanded"
