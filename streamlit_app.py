@@ -64,7 +64,19 @@ falhas_fix = {"A": 0, "B": 1, "C": 3}
 # SIDEBAR
 # =======================================================================
 with st.sidebar:
-    st.header("SIVM")
+    # ===============================
+    # TÍTULO CHAMATIVO
+    # ===============================
+    st.markdown("""
+        <h1 style='color: #ce4545; font-size: 36px; text-align: center; 
+                   text-shadow: 2px 2px #aaa; font-weight: bold; margin-bottom: 20px;'>
+            ⚡ SIVM ⚡
+        </h1>
+        """, unsafe_allow_html=True)
+    
+    # ===============================
+    # MENU DE NAVEGAÇÃO
+    # ===============================
     escolha_pagina = option_menu(
         menu_title=None,
         options=["Página Inicial", "Histórico", "Configurações"],
@@ -72,7 +84,7 @@ with st.sidebar:
         default_index=0,
         styles={
             "container": {"padding": "5!important", "background-color": "#ffffff"},
-            "icon": {"color": "#FFFFFF", "font-size": "20px"},
+            "icon": {"color": "#ce4545", "font-size": "20px"},
             "nav-link": {"font-size": "16px", "text-align": "left", "margin": "0px", "--hover-color": "#eee"},
             "nav-link-selected": {"background-color": "#ce4545", "color": "white"},
         }
