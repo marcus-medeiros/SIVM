@@ -62,7 +62,6 @@ with st.sidebar:
 # PÁGINA INICIAL
 # =======================================================================
 if escolha_pagina == "Página Inicial":
-    st.header("🖥️ Geral")
 
     # Dados individuais por máquina
     dados_a = df_original[['Tensão Fase A', 'Corrente A', 'Potência Ativa A', 'Potência Reativa A', 'Potência Aparente A']]
@@ -78,7 +77,7 @@ if escolha_pagina == "Página Inicial":
 
     # Função auxiliar para exibir cada aba
     def exibir_maquina(nome_maquina, tensao, corrente, pot_ativa, pot_reativa, pot_aparente, pot_ativa_max, delta_pot):
-        st.subheader(f"{nome_maquina}")
+        st.subheader(f"🖥️ Geral - {nome_maquina}")
 
         # ---- NOVOS MÉTRICOS ----
         col1, col2, col3 = st.columns(3)
