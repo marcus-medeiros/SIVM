@@ -69,6 +69,12 @@ if escolha_pagina == "Página Inicial":
     def exibir_maquina(nome_maquina, tensao, corrente, pot_ativa, pot_reativa, pot_aparente, pot_ativa_max, delta_pot):
         st.subheader(f"{nome_maquina}")
 
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Potência Ativa", f"{pot_ativa_max:.2f} W", f"{delta_pot:.2f} W | Média: {media_pw:.2f} W")
+        col2.metric("Potência Reativa", f"{pot_reativa.mean():.2f} var", "-8%")
+        col3.metric("Potência Aparente", f"{pot_aparente.mean():.2f} VA", "12%", delta_color="inverse")
+
+        
         col_rms, col_fft = st.columns(2)
 
         # Apenas uma curva no RMS (tensão)
@@ -83,10 +89,7 @@ if escolha_pagina == "Página Inicial":
             fft_df = pd.DataFrame({"FFT": fft_vals})
             st.line_chart(fft_df)
 
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Potência Ativa", f"{pot_ativa_max:.2f} W", f"{delta_pot:.2f} W | Média: {media_pw:.2f} W")
-        col2.metric("Potência Reativa", f"{pot_reativa.mean():.2f} var", "-8%")
-        col3.metric("Potência Aparente", f"{pot_aparente.mean():.2f} VA", "12%", delta_color="inverse")
+
 
     with tab1:
         exibir_maquina("Máquina A", dados_a['Tensão Fase A'], dados_a['Corrente A'],
