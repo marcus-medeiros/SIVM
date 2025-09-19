@@ -183,10 +183,20 @@ if escolha_pagina == "Página Inicial":
 
     def exibir_maquina(nome_maquina, tensao, conf, tempo, falhas):
         col1, col2, col3 = st.columns(3)
+
+        # Métrica de confiança
         delta_conf = ((conf - media_conf) / media_conf) * 100
         col1.metric("Confiança do Equipamento", f"{conf:.1f} %", delta=f"{delta_conf:+.1f} %")
-        col2.metric("Tempo de Operação", f"{tempo} h")
-        col3.metric("Falhas Detectadas", f"{falhas}")
+
+        # Métrica de tempo de operação comparando com a média
+        media_tempo = np.mean(list(tempo_op_fix.values()))
+        delta_tempo = ((tempo - media_tempo) / media_tempo) * 100
+        col2.metric("Tempo de Operação", f"{tempo} h", delta=f"{delta_tempo:+.1f} %")
+
+        # Métrica de falhas comparando com a média
+        media_falhas = np.mean(list(falhas_fix.values()))
+        delta_falhas = ((falhas - media_falhas) / (media_falhas+0.01)) * 100  # evitar divisão por zero
+        col3.metric("Falhas Detectadas", f"{falhas}", delta=f"{delta_falhas:+.1f} %")
 
         col_rms, col_fft = st.columns(2)
 
@@ -205,7 +215,7 @@ if escolha_pagina == "Página Inicial":
                     strokeDash=[4, 4], color="black", size=3
                 ).encode(y="y:Q")
                 linha_max = alt.Chart(pd.DataFrame({"y": [max_limite]})).mark_rule(
-                    strokeDash=[4, 4], color="black", size =3
+                    strokeDash=[4, 4], color="black", size=3
                 ).encode(y="y:Q")
                 chart_rms = chart_rms + linha_min + linha_max
             st.altair_chart(chart_rms, use_container_width=True)
@@ -213,7 +223,7 @@ if escolha_pagina == "Página Inicial":
         with col_fft:
             st.markdown("### FFT (Tensão)")
             fft_vals = np.abs(np.fft.rfft(tensao.values))
-            freq = np.fft.rfftfreq(len(tensao.values), d=1/1920)  # considerando fs=60*32=1920Hz
+            freq = np.fft.rfftfreq(len(tensao.values), d=1/1920)  # fs = 60*32
             df_fft = pd.DataFrame({"freq": freq, "FFT": fft_vals})
             chart_fft = alt.Chart(df_fft).mark_line(color="red").encode(
                 x=alt.X("freq:Q", title="Frequência (Hz)"),
