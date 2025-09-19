@@ -285,7 +285,7 @@ elif escolha_pagina == "Página Inicial":
 
     # Cálculo da média
     media_pw = (pot_ativa_max_a + pot_ativa_max_b + pot_ativa_max_c) / 3
-    st.header("Análise das Tensões e Correntes")
+    st.header("Medições")
 
     tab1, tab2, tab3 = st.tabs(["Máquina A", "Máquina B", "Máquina C"])
     
@@ -333,7 +333,7 @@ elif escolha_pagina == "Página Inicial":
 
     st.divider()
 
-    
+
 # -----------------------------------------------------------------------
 # ELEMENTOS DE TEXTO
 # -----------------------------------------------------------------------
