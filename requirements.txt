@@ -1,6 +1,4 @@
 streamlit
 pandas
 numpy
-matplotlib
-plotly
-datetime
+streamlit-option-menu

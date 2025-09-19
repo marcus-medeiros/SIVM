@@ -1,8 +1,12 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime
+from streamlit_option_menu import option_menu
 
+# =======================================================================
+# GERAÇÃO DE DADOS SIMULADOS (df_original)
+# =======================================================================
 @st.cache_data
 def gerar_dados_eletricos():
     n_pontos = 2 * 24 * 60  # 2 dias, 1 ponto/minuto
@@ -10,7 +14,6 @@ def gerar_dados_eletricos():
     t = np.arange(n_pontos) / fs
     timestamps = pd.date_range(end=datetime.now(), periods=n_pontos, freq='T')
 
-    # Função para gerar sinal senoidal + harmônicos + ruído
     def gerar_onda(amplitude, freq, n, ruido_amp=0.5, harm3=0.05, harm5=0.02):
         sinal_fundamental = amplitude * np.sin(2 * np.pi * freq * t[:n])
         sinal_3a = harm3 * amplitude * np.sin(2 * np.pi * (3 * freq) * t[:n])
@@ -18,12 +21,10 @@ def gerar_dados_eletricos():
         ruido = np.random.normal(0, ruido_amp, n)
         return sinal_fundamental + sinal_3a + sinal_5a + ruido
 
-    # --- Tensões (fase-fase ou fase-neutro) ---
-    tensao_a = 127 + gerar_onda(10, 60, n_pontos)  # base + variação
+    tensao_a = 127 + gerar_onda(10, 60, n_pontos)
     tensao_b = 127 + gerar_onda(10, 60, n_pontos, ruido_amp=0.4)
     tensao_c = 127 + gerar_onda(10, 60, n_pontos, ruido_amp=0.6)
 
-    # --- Correntes ---
     corrente_a = 10 + gerar_onda(2, 60, n_pontos, ruido_amp=0.2)
     corrente_b = 8.5 + gerar_onda(1.5, 60, n_pontos, ruido_amp=0.15)
     corrente_c = 11 + gerar_onda(2.5, 60, n_pontos, ruido_amp=0.25)
@@ -48,20 +49,33 @@ def gerar_dados_eletricos():
 df_original = gerar_dados_eletricos()
 
 # =======================================================================
-# SIDEBAR
+# SIDEBAR MODERNA
 # =======================================================================
 with st.sidebar:
-    st.image("Logo_v2.png", width=100)
-    escolha_pagina = st.radio(
-        "Escolha uma opção:",
-        ["Página Inicial", "Historico", "Configurações"]
+    st.image("Logo_v2.png", width=120)
+    escolha_pagina = option_menu(
+        menu_title=None,
+        options=["Página Inicial", "Histórico", "Configurações"],
+        icons=["house", "clock-history", "gear"],
+        default_index=0,
+        styles={
+            "container": {"padding": "5!important", "background-color": "#f9f9f9"},
+            "icon": {"color": "#4a90e2", "font-size": "20px"},
+            "nav-link": {
+                "font-size": "16px",
+                "text-align": "left",
+                "margin": "0px",
+                "--hover-color": "#eee",
+            },
+            "nav-link-selected": {"background-color": "#4a90e2", "color": "white"},
+        }
     )
-    st.markdown("---")
 
 # =======================================================================
 # PÁGINA INICIAL
 # =======================================================================
 if escolha_pagina == "Página Inicial":
+    st.header("🖥️ Geral")
 
     # Dados individuais por máquina
     dados_a = df_original[['Tensão Fase A', 'Corrente A', 'Potência Ativa A', 'Potência Reativa A', 'Potência Aparente A']]
@@ -75,23 +89,20 @@ if escolha_pagina == "Página Inicial":
 
     tab1, tab2, tab3 = st.tabs(["Máquina A", "Máquina B", "Máquina C"])
 
-    # Função auxiliar para exibir cada aba
     def exibir_maquina(nome_maquina, tensao, corrente, pot_ativa, pot_reativa, pot_aparente, pot_ativa_max, delta_pot):
-        st.subheader(f"🖥️ Geral - {nome_maquina}")
+        st.subheader(f"{nome_maquina}")
 
-        # ---- NOVOS MÉTRICOS ----
         col1, col2, col3 = st.columns(3)
-        confianca = max(0, min(100, 100 - abs(delta_pot) / media_pw * 100))  # confiança comparada à média
-        tempo_operacao = np.random.randint(100, 1000)  # horas de operação simuladas
-        falhas = np.random.randint(0, 5)  # falhas detectadas simuladas
+        confianca = max(0, min(100, 100 - abs(delta_pot) / media_pw * 100))
+        tempo_operacao = np.random.randint(100, 1000)
+        falhas = np.random.randint(0, 5)
 
         col1.metric("Confiança do Equipamento", f"{confianca:.1f} %")
         col2.metric("Tempo de Operação", f"{tempo_operacao} h")
         col3.metric("Falhas Detectadas", f"{falhas}")
 
-        #st.markdown("---")
+        st.markdown("---")
 
-        # ---- GRÁFICOS ----
         col_rms, col_fft = st.columns(2)
         with col_rms:
             st.write("### RMS (Tensão)")
@@ -99,7 +110,7 @@ if escolha_pagina == "Página Inicial":
 
         with col_fft:
             st.write("### FFT (Tensão)")
-            fft_vals = np.abs(np.fft.rfft(tensao.values))  # FFT da tensão
+            fft_vals = np.abs(np.fft.rfft(tensao.values))
             fft_df = pd.DataFrame({"FFT": fft_vals})
             st.line_chart(fft_df)
 
