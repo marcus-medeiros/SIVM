@@ -75,8 +75,6 @@ with st.sidebar:
 # PÁGINA INICIAL
 # =======================================================================
 if escolha_pagina == "Página Inicial":
-    st.header("🖥️ Geral")
-
     # Dados individuais por máquina
     dados_a = df_original[['Tensão Fase A', 'Corrente A', 'Potência Ativa A', 'Potência Reativa A', 'Potência Aparente A']]
     dados_b = df_original[['Tensão Fase B', 'Corrente B', 'Potência Ativa B', 'Potência Reativa B', 'Potência Aparente B']]
@@ -90,7 +88,6 @@ if escolha_pagina == "Página Inicial":
     tab1, tab2, tab3 = st.tabs(["Máquina A", "Máquina B", "Máquina C"])
 
     def exibir_maquina(nome_maquina, tensao, corrente, pot_ativa, pot_reativa, pot_aparente, pot_ativa_max, delta_pot):
-        st.subheader(f"{nome_maquina}")
 
         col1, col2, col3 = st.columns(3)
         confianca = max(0, min(100, 100 - abs(delta_pot) / media_pw * 100))
