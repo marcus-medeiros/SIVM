@@ -60,7 +60,7 @@ with st.sidebar:
         default_index=0,
         styles={
             "container": {"padding": "5!important", "background-color": "#f9f9f9"},
-            "icon": {"color": "#4a90e2", "font-size": "20px"},
+            "icon": {"color": "#CC291E", "font-size": "20px"},
             "nav-link": {
                 "font-size": "16px",
                 "text-align": "left",
