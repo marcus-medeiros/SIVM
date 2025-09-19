@@ -3,29 +3,41 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 
-# =======================================================================
-# GERAÇÃO DE DADOS SIMULADOS (df_original)
-# =======================================================================
 @st.cache_data
 def gerar_dados_eletricos():
     n_pontos = 2 * 24 * 60  # 2 dias, 1 ponto/minuto
+    fs = 60 * 32  # amostragem "virtual" 32 amostras por ciclo de 60Hz
+    t = np.arange(n_pontos) / fs
     timestamps = pd.date_range(end=datetime.now(), periods=n_pontos, freq='T')
 
-    def gerar_serie(base, amp, n):
-        tendencia = np.linspace(0, amp, n)
-        ruido = np.random.normal(0, amp * 0.1, n)
-        return base + tendencia + ruido
+    # Função para gerar sinal senoidal + harmônicos + ruído
+    def gerar_onda(amplitude, freq, n, ruido_amp=0.5, harm3=0.05, harm5=0.02):
+        sinal_fundamental = amplitude * np.sin(2 * np.pi * freq * t[:n])
+        sinal_3a = harm3 * amplitude * np.sin(2 * np.pi * (3 * freq) * t[:n])
+        sinal_5a = harm5 * amplitude * np.sin(2 * np.pi * (5 * freq) * t[:n])
+        ruido = np.random.normal(0, ruido_amp, n)
+        return sinal_fundamental + sinal_3a + sinal_5a + ruido
 
-    dados = {
-        'Tensão Fase A': gerar_serie(125, 3, n_pontos),
-        'Tensão Fase B': gerar_serie(126, 2, n_pontos),
-        'Tensão Fase C': gerar_serie(124, 4, n_pontos),
+    # --- Tensões (fase-fase ou fase-neutro) ---
+    tensao_a = 127 + gerar_onda(10, 60, n_pontos)  # base + variação
+    tensao_b = 127 + gerar_onda(10, 60, n_pontos, ruido_amp=0.4)
+    tensao_c = 127 + gerar_onda(10, 60, n_pontos, ruido_amp=0.6)
 
-        'Corrente A': gerar_serie(10, 2, n_pontos),
-        'Corrente B': gerar_serie(9, 1.5, n_pontos),
-        'Corrente C': gerar_serie(11, 2.5, n_pontos),
-    }
+    # --- Correntes ---
+    corrente_a = 10 + gerar_onda(2, 60, n_pontos, ruido_amp=0.2)
+    corrente_b = 8.5 + gerar_onda(1.5, 60, n_pontos, ruido_amp=0.15)
+    corrente_c = 11 + gerar_onda(2.5, 60, n_pontos, ruido_amp=0.25)
+
     fp = 0.92
+    dados = {
+        'Tensão Fase A': tensao_a,
+        'Tensão Fase B': tensao_b,
+        'Tensão Fase C': tensao_c,
+        'Corrente A': corrente_a,
+        'Corrente B': corrente_b,
+        'Corrente C': corrente_c,
+    }
+
     for fase in ['A', 'B', 'C']:
         dados[f'Potência Ativa {fase}'] = dados[f'Tensão Fase {fase}'] * dados[f'Corrente {fase}'] * fp
         dados[f'Potência Reativa {fase}'] = dados[f'Tensão Fase {fase}'] * dados[f'Corrente {fase}'] * np.sin(np.arccos(fp))
