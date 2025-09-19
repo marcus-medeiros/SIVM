@@ -95,6 +95,44 @@ if escolha_pagina == "Configurações":
             st.error((f"Limite Inferior: {min_tensao}V é superior ao limite máximo {max_tensao} V"))
 
 # =======================================================================
+# PÁGINA HISTÓRICO
+# =======================================================================
+if escolha_pagina == "Histórico":
+    st.subheader("📊 Histórico de Alarmes")
+
+    min_limite, max_limite = st.session_state["limites_tensao"]
+
+    # Função para gerar tabela de alarmes para uma máquina
+    def gerar_alarm_table(nome_maquina, tensao):
+        df_alarme = tensao[(tensao < min_limite) | (tensao > max_limite)].to_frame(name="Tensão (V)")
+        if df_alarme.empty:
+            df_alarme = pd.DataFrame({"Tensão (V)": [], "Alarme": []})
+        else:
+            df_alarme["Alarme"] = df_alarme["Tensão (V)"].apply(
+                lambda x: "Acima do limite" if x > max_limite else "Abaixo do limite"
+            )
+        return df_alarme
+
+    # Criar abas por máquina
+    tab_a, tab_b, tab_c = st.tabs(["Máquina A", "Máquina B", "Máquina C"])
+
+    with tab_a:
+        st.write("### Máquina A")
+        tabela_a = gerar_alarm_table("A", df_original['Tensão Fase A'])
+        st.dataframe(tabela_a)
+
+    with tab_b:
+        st.write("### Máquina B")
+        tabela_b = gerar_alarm_table("B", df_original['Tensão Fase B'])
+        st.dataframe(tabela_b)
+
+    with tab_c:
+        st.write("### Máquina C")
+        tabela_c = gerar_alarm_table("C", df_original['Tensão Fase C'])
+        st.dataframe(tabela_c)
+
+
+# =======================================================================
 # PÁGINA INICIAL
 # =======================================================================
 if escolha_pagina == "Página Inicial":
