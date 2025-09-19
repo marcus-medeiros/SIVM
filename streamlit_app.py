@@ -84,9 +84,13 @@ with st.sidebar:
         default_index=0,
         styles={
             "container": {"padding": "5!important", "background-color": "#ffffff"},
-            "icon": {"color": "#ce4545", "font-size": "20px"},
+            "icon": {"color": "#ce4545", "font-size": "20px"},  # ícone padrão (não selecionado)
             "nav-link": {"font-size": "16px", "text-align": "left", "margin": "0px", "--hover-color": "#eee"},
-            "nav-link-selected": {"background-color": "#ce4545", "color": "white"},
+            "nav-link-selected": {
+                "background-color": "#ce4545",
+                "color": "white",             # texto do link
+                "icon-color": "yellow"        # ícone quando selecionado
+            },
         }
     )
 
