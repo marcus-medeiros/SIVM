@@ -88,8 +88,11 @@ if escolha_pagina == "Configurações":
     
 
     if st.button("Salvar limites"):
-        st.session_state["limites_tensao"] = (min_tensao, max_tensao)
-        st.success(f"✅ Limites salvos: {min_tensao} V - {max_tensao} V")
+        if (min_tensao < max_tensao):
+            st.session_state["limites_tensao"] = (min_tensao, max_tensao)
+            st.success(f"✅ Limites salvos: {min_tensao} V - {max_tensao} V")
+        else: 
+            st.error((f"Limite Inferior: {min_tensao}V é superior ao limite máximo {max_tensao} V"))
 
 # =======================================================================
 # PÁGINA INICIAL
