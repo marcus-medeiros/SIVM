@@ -4,6 +4,7 @@ import numpy as np
 import altair as alt
 from datetime import datetime
 from streamlit_option_menu import option_menu
+import io
 
 # =======================================================================
 # INICIALIZAÇÃO DOS ESTADOS (para não perder valores ao trocar de página)
@@ -154,6 +155,9 @@ if escolha_pagina == "Configurações":
 # =======================================================================
 # PÁGINA HISTÓRICO
 # =======================================================================
+# =======================================================================
+# PÁGINA HISTÓRICO
+# =======================================================================
 if escolha_pagina == "Histórico":
     st.markdown("#### Histórico")
 
@@ -170,30 +174,46 @@ if escolha_pagina == "Histórico":
             )
         return df_alarme
 
+    # Criar tabelas
+    tabela_a = gerar_alarm_table("A", df_original['Tensão Fase A'])
+    tabela_b = gerar_alarm_table("B", df_original['Tensão Fase B'])
+    tabela_c = gerar_alarm_table("C", df_original['Tensão Fase C'])
+
     # Criar abas por máquina
     tab_a, tab_b, tab_c = st.tabs(["Máquina A", "Máquina B", "Máquina C"])
 
     with tab_a:
         st.write("### Máquina A")
-        tabela_a = gerar_alarm_table("A", df_original['Tensão Fase A'])
         st.dataframe(tabela_a)
 
     with tab_b:
         st.write("### Máquina B")
-        tabela_b = gerar_alarm_table("B", df_original['Tensão Fase B'])
         st.dataframe(tabela_b)
 
     with tab_c:
         st.write("### Máquina C")
-        tabela_c = gerar_alarm_table("C", df_original['Tensão Fase C'])
         st.dataframe(tabela_c)
 
-
+    # ================================
+    # BOTÃO PARA BAIXAR AS TABELAS
+    # ================================
+    with io.BytesIO() as buffer:
+        with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+            tabela_a.to_excel(writer, sheet_name="Máquina A")
+            tabela_b.to_excel(writer, sheet_name="Máquina B")
+            tabela_c.to_excel(writer, sheet_name="Máquina C")
+            writer.save()
+        st.download_button(
+            label="📥 Baixar Tabelas de Alarmes",
+            data=buffer.getvalue(),
+            file_name="alarm_data.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 # =======================================================================
 # PÁGINA INICIAL
 # =======================================================================
 if escolha_pagina == "Página Inicial":
-    st.markdown("#### Página Inicial")
+    st.markdown("#### Página ")
     min_limite, max_limite = st.session_state["limites_tensao"]
 
     dados_a = df_original[['Tensão Fase A', 'Potência Ativa A']]
