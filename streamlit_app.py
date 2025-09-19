@@ -89,7 +89,7 @@ if escolha_pagina == "Página Inicial":
         col2.metric("Tempo de Operação", f"{tempo_operacao} h")
         col3.metric("Falhas Detectadas", f"{falhas}")
 
-        st.markdown("---")
+        #st.markdown("---")
 
         # ---- GRÁFICOS ----
         col_rms, col_fft = st.columns(2)
