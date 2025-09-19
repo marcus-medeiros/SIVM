@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import altair as alt
 from datetime import datetime
 from streamlit_option_menu import option_menu
 
@@ -9,8 +10,8 @@ from streamlit_option_menu import option_menu
 # =======================================================================
 @st.cache_data
 def gerar_dados_eletricos():
-    n_pontos = 2 * 24 * 60  # 2 dias, 1 ponto/minuto
-    fs = 60 * 32  # amostragem "virtual" 32 amostras por ciclo de 60Hz
+    n_pontos = 2 * 24 * 60
+    fs = 60 * 32
     t = np.arange(n_pontos) / fs
     timestamps = pd.date_range(end=datetime.now(), periods=n_pontos, freq='T')
 
@@ -41,8 +42,6 @@ def gerar_dados_eletricos():
 
     for fase in ['A', 'B', 'C']:
         dados[f'Potência Ativa {fase}'] = dados[f'Tensão Fase {fase}'] * dados[f'Corrente {fase}'] * fp
-        dados[f'Potência Reativa {fase}'] = dados[f'Tensão Fase {fase}'] * dados[f'Corrente {fase}'] * np.sin(np.arccos(fp))
-        dados[f'Potência Aparente {fase}'] = dados[f'Tensão Fase {fase}'] * dados[f'Corrente {fase}']
 
     return pd.DataFrame(dados, index=timestamps)
 
@@ -51,7 +50,6 @@ df_original = gerar_dados_eletricos()
 # =======================================================================
 # VALORES FIXOS DAS MÁQUINAS
 # =======================================================================
-# valores fixos (podem vir de um banco futuramente)
 confianca_fix = {"A": 95.0, "B": 90.0, "C": 85.0}
 tempo_op_fix = {"A": 520, "B": 610, "C": 450}
 falhas_fix = {"A": 0, "B": 1, "C": 3}
@@ -69,66 +67,71 @@ with st.sidebar:
         styles={
             "container": {"padding": "5!important", "background-color": "#ffffff"},
             "icon": {"color": "#FFFFFF", "font-size": "20px"},
-            "nav-link": {
-                "font-size": "16px",
-                "text-align": "left",
-                "margin": "0px",
-                "--hover-color": "#eee",
-            },
+            "nav-link": {"font-size": "16px", "text-align": "left", "margin": "0px", "--hover-color": "#eee"},
             "nav-link-selected": {"background-color": "#ce4545", "color": "white"},
         }
     )
 
 # =======================================================================
+# CONFIGURAÇÕES
+# =======================================================================
+if escolha_pagina == "Configurações":
+    st.subheader("Configurações de Limites dos Gráficos")
+    st.markdown("Defina o limite mínimo e máximo das tensões")
+
+    min_tensao = st.number_input("Valor mínimo da tensão (V)", value=120.0, step=1.0)
+    max_tensao = st.number_input("Valor máximo da tensão (V)", value=140.0, step=1.0)
+
+    st.session_state["limites_tensao"] = (min_tensao, max_tensao)
+    st.success(f"Limites definidos: {min_tensao} V - {max_tensao} V")
+
+# =======================================================================
 # PÁGINA INICIAL
 # =======================================================================
 if escolha_pagina == "Página Inicial":
-    dados_a = df_original[['Tensão Fase A', 'Corrente A', 'Potência Ativa A']]
-    dados_b = df_original[['Tensão Fase B', 'Corrente B', 'Potência Ativa B']]
-    dados_c = df_original[['Tensão Fase C', 'Corrente C', 'Potência Ativa C']]
+    limites = st.session_state.get("limites_tensao", (None, None))
+    min_limite, max_limite = limites
 
-    pot_ativa_max_a = dados_a['Potência Ativa A'].max()
-    pot_ativa_max_b = dados_b['Potência Ativa B'].max()
-    pot_ativa_max_c = dados_c['Potência Ativa C'].max()
-    media_pw = (pot_ativa_max_a + pot_ativa_max_b + pot_ativa_max_c) / 3
+    dados_a = df_original[['Tensão Fase A', 'Potência Ativa A']]
+    dados_b = df_original[['Tensão Fase B', 'Potência Ativa B']]
+    dados_c = df_original[['Tensão Fase C', 'Potência Ativa C']]
 
-    # média de confiança para calcular delta %
     media_conf = np.mean(list(confianca_fix.values()))
-
     tab1, tab2, tab3 = st.tabs(["Máquina A", "Máquina B", "Máquina C"])
 
-    def exibir_maquina(nome_maquina, tensao, pot_ativa, conf, tempo, falhas):
+    def exibir_maquina(nome_maquina, tensao, conf, tempo, falhas):
         col1, col2, col3 = st.columns(3)
         delta_conf = ((conf - media_conf) / media_conf) * 100
+        col1.metric("Confiança do Equipamento", f"{conf:.1f} %", delta=f"{delta_conf:+.1f} %")
+        col2.metric("Tempo de Operação", f"{tempo} h")
+        col3.metric("Falhas Detectadas", f"{falhas}")
 
-        col1.metric("Confiança do Equipamento", f"{conf:.1f} %",
-                    delta=f"{delta_conf:+.1f} %")
-        col2.metric("Tempo de Operação", f"{tempo} h",
-                    delta=f"{((tempo - np.mean(list(tempo_op_fix.values()))) / np.mean(list(tempo_op_fix.values()))) * 100:+.1f} %")
-        col3.metric("Falhas Detectadas", f"{falhas}",
-                    delta=f"{((falhas - np.mean(list(falhas_fix.values()))) / (np.mean(list(falhas_fix.values()))+0.01)) * 100:+.1f} %")
+        st.markdown("### RMS (Tensão)")
 
-        col_rms, col_fft = st.columns(2)
-        with col_rms:
-            st.write("### RMS (Tensão)")
-            st.line_chart(tensao, color=["#FF0000"])
+        df_tensao = pd.DataFrame({"timestamp": tensao.index, "tensao": tensao.values})
 
-        with col_fft:
-            st.write("### FFT (Tensão)")
-            fft_vals = np.abs(np.fft.rfft(tensao.values))
-            fft_df = pd.DataFrame({"FFT": fft_vals})
-            st.line_chart(fft_df, color=["#FF0000"])
+        chart = alt.Chart(df_tensao).mark_line(color="red").encode(
+            x="timestamp:T",
+            y="tensao:Q"
+        )
+
+        # Adiciona linhas horizontais tracejadas se os limites existirem
+        if min_limite is not None and max_limite is not None:
+            linha_min = alt.Chart(pd.DataFrame({"y": [min_limite]})).mark_rule(
+                strokeDash=[4, 4], color="gray"
+            ).encode(y="y:Q")
+            linha_max = alt.Chart(pd.DataFrame({"y": [max_limite]})).mark_rule(
+                strokeDash=[4, 4], color="gray"
+            ).encode(y="y:Q")
+            chart = chart + linha_min + linha_max
+
+        st.altair_chart(chart, use_container_width=True)
 
     with tab1:
-        exibir_maquina("Máquina A", dados_a['Tensão Fase A'], dados_a['Potência Ativa A'],
-                       confianca_fix["A"], tempo_op_fix["A"], falhas_fix["A"])
-
+        exibir_maquina("Máquina A", dados_a['Tensão Fase A'], confianca_fix["A"], tempo_op_fix["A"], falhas_fix["A"])
     with tab2:
-        exibir_maquina("Máquina B", dados_b['Tensão Fase B'], dados_b['Potência Ativa B'],
-                       confianca_fix["B"], tempo_op_fix["B"], falhas_fix["B"])
-
+        exibir_maquina("Máquina B", dados_b['Tensão Fase B'], confianca_fix["B"], tempo_op_fix["B"], falhas_fix["B"])
     with tab3:
-        exibir_maquina("Máquina C", dados_c['Tensão Fase C'], dados_c['Potência Ativa C'],
-                       confianca_fix["C"], tempo_op_fix["C"], falhas_fix["C"])
+        exibir_maquina("Máquina C", dados_c['Tensão Fase C'], confianca_fix["C"], tempo_op_fix["C"], falhas_fix["C"])
 
     st.divider()
