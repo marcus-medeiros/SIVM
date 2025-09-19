@@ -32,7 +32,7 @@ with st.sidebar:
         "Escolha uma opção:",
         [
             "Página Inicial",
-            "Histórico",
+            "Historico",
             "Configurações"
         ]
     )
@@ -46,7 +46,7 @@ with st.sidebar:
 # -----------------------------------------------------------------------
 # PÁGINA INICIAL
 # -----------------------------------------------------------------------
-if escolha_pagina == "Histórico":
+if escolha_pagina == "Historico":
     st.title(":zap: Análise de Dados dos Motores")
     # --- 1. Geração de Dados (sem alterações) ---
     @st.cache_data
