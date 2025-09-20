@@ -257,7 +257,7 @@ if escolha_pagina == "Página Inicial":
         col_rms, col_fft = st.columns(2)
 
         with col_rms:
-            st.markdown("### RMS (Tensão) ℹ️", help="RMS significa 'Root Mean Square', ou valor eficaz da tensão ao longo do tempo.")
+            st.markdown("### RMS (Tensão)", help="RMS significa 'Root Mean Square', ou valor eficaz da tensão ao longo do tempo.")
             df_tensao = pd.DataFrame({"timestamp": tensao.index, "tensao": tensao.values})
             y_min = tensao.min() - 5
             y_max = tensao.max() + 5
@@ -277,7 +277,7 @@ if escolha_pagina == "Página Inicial":
             st.altair_chart(chart_rms, use_container_width=True)
 
         with col_fft:
-            st.markdown("### FFT (Tensão) ℹ️", help="FFT significa 'Fast Fourier Transform', usada para analisar frequências presentes no sinal.")
+            st.markdown("### FFT (Tensão)", help="FFT significa 'Fast Fourier Transform', usada para analisar frequências presentes no sinal.")
             fft_vals = np.abs(np.fft.rfft(tensao.values))
             freq = np.fft.rfftfreq(len(tensao.values), d=1/1920)  # fs = 60*32
             df_fft = pd.DataFrame({"freq": freq, "FFT": fft_vals})
