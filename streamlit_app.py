@@ -20,13 +20,6 @@ def check_login():
     .main {
         background-color: #f0f2f6;
     }
-    .login-container {
-        padding: 3rem;
-        background: white;
-        border-radius: 15px;
-        box-shadow: 0 16px 16px rgba(0,0,0,0.1);
-        margin-top: 4rem;
-    }
     .login-title {
         text-align: center;
         color: #ce4545;
@@ -63,7 +56,6 @@ def check_login():
 
     with col2:
         # Adiciona a classe CSS ao container para aplicar o estilo
-        st.markdown('<div class="login-container">', unsafe_allow_html=True)
         
         st.markdown("<h1 class='login-title'>- SIVM -</h1>", unsafe_allow_html=True)
         
