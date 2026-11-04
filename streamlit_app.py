@@ -14,6 +14,9 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Passo de tempo de amostragem fixado em 0.1 s
+DT_AMOSTRAGEM = 0.1
+
 # Inicialização de variáveis de sessão
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
@@ -108,22 +111,22 @@ def carregar_arquivo_mat(arquivo_upload):
         return {}
 
 # =======================================================================
-# 4. GERAÇÃO DE DADOS DE TESTE (TEMPO INICIANDO EM 0s)
+# 4. GERAÇÃO DE DADOS SIMULADOS (TEMPO COM DT = 0.1s)
 # =======================================================================
-def gerar_dados_simulados(num_pontos=360, dt=1.0):
+def gerar_dados_simulados(num_pontos=500, dt=DT_AMOSTRAGEM):
     speed_data = []
     soc_data = []
 
-    speed = 40.0
-    soc = 100.0
+    speed = 45.0
+    soc = 95.0
 
     for i in range(num_pontos):
         t_sec = round(i * dt, 2)
-        speed_change = (random.random() - 0.48) * 4
-        speed = max(0.0, min(140.0, speed + speed_change))
-        
-        soc_drop = (speed / 140.0) * 0.15 + 0.02
-        soc = max(0.0, soc - soc_drop)
+        speed_change = (random.random() - 0.49) * 3.5
+        speed = max(0.0, min(130.0, speed + speed_change))
+
+        soc_drop = (speed / 130.0) * 0.04 + 0.005
+        soc = max(5.0, soc - soc_drop)
 
         speed_data.append([t_sec, round(speed, 2)])
         soc_data.append([t_sec, round(soc, 2)])
@@ -134,7 +137,7 @@ def gerar_dados_simulados(num_pontos=360, dt=1.0):
     }
 
 # =======================================================================
-# 5. PLOTAGEM COM TEMPO DE SIMULAÇÃO (EIXO X NUMÉRICO COMEÇANDO EM 0)
+# 5. GRÁFICO TEMPORAL COM DUPLO EIXO Y (ÁREA + LINHA)
 # =======================================================================
 def plotar_grafico_duplo_eixo(
     serie_esq,
@@ -242,10 +245,63 @@ def plotar_grafico_duplo_eixo(
         ],
     }
 
-    st_echarts(options=options, height="520px")
+    st_echarts(options=options, height="480px")
 
 # =======================================================================
-# 6. APLICAÇÃO PRINCIPAL
+# 6. GRÁFICO DE PIZZA: % DAS CONDIÇÕES OPERACIONAIS
+# =======================================================================
+def plotar_pizza_condicoes(vetor_valores, nome_var):
+    """Calcula a distribuição percentual das condições de regime de operação."""
+    vals = np.array(vetor_valores)
+    q33 = np.percentile(vals, 33)
+    q66 = np.percentile(vals, 66)
+
+    # Classificação em 3 condições de operação
+    cond_baixa = int(np.sum(vals <= q33))
+    cond_media = int(np.sum((vals > q33) & (vals <= q66)))
+    cond_alta = int(np.sum(vals > q66))
+
+    pie_options = {
+        "title": {
+            "text": f"Distribuição das Condições: {nome_var}",
+            "subtext": "Tempo de permanência em cada faixa operacional",
+            "left": "center",
+        },
+        "tooltip": {
+            "trigger": "item",
+            "formatter": "{a} <br/>{b}: <b>{c} amostras</b> ({d}%)"
+        },
+        "legend": {
+            "orient": "horizontal",
+            "bottom": "0%",
+            "left": "center"
+        },
+        "series": [
+            {
+                "name": "Condição",
+                "type": "pie",
+                "radius": "55%",
+                "center": ["50%", "50%"],
+                "data": [
+                    {"value": cond_baixa, "name": f"Baixa Demanda (≤ {q33:.1f})", "itemStyle": {"color": "#2ed573"}},
+                    {"value": cond_media, "name": f"Operação Normal ({q33:.1f} a {q66:.1f})", "itemStyle": {"color": "#ffa502"}},
+                    {"value": cond_alta, "name": f"Alta Demanda (> {q66:.1f})", "itemStyle": {"color": "#ff4757"}},
+                ],
+                "emphasis": {
+                    "itemStyle": {
+                        "shadowBlur": 10,
+                        "shadowOffsetX": 0,
+                        "shadowColor": "rgba(0, 0, 0, 0.5)",
+                    }
+                },
+            }
+        ],
+    }
+
+    st_echarts(options=pie_options, height="380px")
+
+# =======================================================================
+# 7. APLICAÇÃO PRINCIPAL
 # =======================================================================
 def main_app():
     with st.sidebar:
@@ -260,10 +316,9 @@ def main_app():
         arquivo_2 = st.file_uploader("Arquivo 2 (.mat)", type=["mat"], key="file2")
         
         st.markdown("---")
-        st.markdown("### ⏱️ Configuração de Tempo")
-        dt_amostragem = st.number_input("Passo de tempo (Δt em segundos)", min_value=0.0001, value=1.0, step=0.1, format="%.4f")
+        st.info(f"⏱️ **Passo de Amostragem:** Fixo em `{DT_AMOSTRAGEM} s`")
 
-    st.title("Painel de Telemetria Multivariável")
+    st.title("Painel de Telemetria e Condições Operacionais")
 
     tab_mat1, tab_mat2, tab_sim = st.tabs(["📁 Arquivo .MAT 1", "📁 Arquivo .MAT 2", "📊 Dados Simulados"])
 
@@ -276,12 +331,11 @@ def main_app():
             chaves = list(vars_1.keys())
             if len(chaves) >= 2:
                 col1, col2 = st.columns(2)
-                var_esq = col1.selectbox("Variável do Eixo Esquerdo (Área):", chaves, key="v1_left")
-                var_dir = col2.selectbox("Variável do Eixo Direito (Linha):", chaves, index=1, key="v1_right")
+                var_esq = col1.selectbox("Variável Esquerda (Área):", chaves, key="v1_left")
+                var_dir = col2.selectbox("Variável Direita (Linha):", chaves, index=1, key="v1_right")
 
-                # Vetor de tempo iniciando em 0.0s com passo dt
-                dados_esq = [[round(i * dt_amostragem, 4), float(v)] for i, v in enumerate(vars_1[var_esq])]
-                dados_dir = [[round(i * dt_amostragem, 4), float(v)] for i, v in enumerate(vars_1[var_dir])]
+                dados_esq = [[round(i * DT_AMOSTRAGEM, 2), float(v)] for i, v in enumerate(vars_1[var_esq])]
+                dados_dir = [[round(i * DT_AMOSTRAGEM, 2), float(v)] for i, v in enumerate(vars_1[var_dir])]
 
                 plotar_grafico_duplo_eixo(
                     serie_esq=dados_esq,
@@ -290,10 +344,17 @@ def main_app():
                     nome_eixo_dir=var_dir,
                     titulo=f"{arquivo_1.name} — {var_esq} vs {var_dir}"
                 )
+
+                st.markdown("---")
+                col_p1, col_p2 = st.columns(2)
+                with col_p1:
+                    plotar_pizza_condicoes(vars_1[var_esq], var_esq)
+                with col_p2:
+                    plotar_pizza_condicoes(vars_1[var_dir], var_dir)
             else:
-                st.warning("O arquivo precisa ter no mínimo 2 variáveis numéricas.")
+                st.warning("O arquivo precisa conter no mínimo 2 variáveis numéricas.")
         else:
-            st.info("Envie o Arquivo 1 (.mat) na barra lateral para exibir os dados.")
+            st.info("Envie o Arquivo 1 (.mat) na barra lateral para carregar a telemetria.")
 
     # -------------------------------------------------------------------
     # ABA ARQUIVO 2
@@ -304,11 +365,11 @@ def main_app():
             chaves2 = list(vars_2.keys())
             if len(chaves2) >= 2:
                 col3, col4 = st.columns(2)
-                var_esq2 = col3.selectbox("Variável do Eixo Esquerdo (Área):", chaves2, key="v2_left")
-                var_dir2 = col4.selectbox("Variável do Eixo Direito (Linha):", chaves2, index=1, key="v2_right")
+                var_esq2 = col3.selectbox("Variável Esquerda (Área):", chaves2, key="v2_left")
+                var_dir2 = col4.selectbox("Variável Direita (Linha):", chaves2, index=1, key="v2_right")
 
-                dados_esq2 = [[round(i * dt_amostragem, 4), float(v)] for i, v in enumerate(vars_2[var_esq2])]
-                dados_dir2 = [[round(i * dt_amostragem, 4), float(v)] for i, v in enumerate(vars_2[var_dir2])]
+                dados_esq2 = [[round(i * DT_AMOSTRAGEM, 2), float(v)] for i, v in enumerate(vars_2[var_esq2])]
+                dados_dir2 = [[round(i * DT_AMOSTRAGEM, 2), float(v)] for i, v in enumerate(vars_2[var_dir2])]
 
                 plotar_grafico_duplo_eixo(
                     serie_esq=dados_esq2,
@@ -317,27 +378,42 @@ def main_app():
                     nome_eixo_dir=var_dir2,
                     titulo=f"{arquivo_2.name} — {var_esq2} vs {var_dir2}"
                 )
+
+                st.markdown("---")
+                col_p3, col_p4 = st.columns(2)
+                with col_p3:
+                    plotar_pizza_condicoes(vars_2[var_esq2], var_esq2)
+                with col_p4:
+                    plotar_pizza_condicoes(vars_2[var_dir2], var_dir2)
             else:
-                st.warning("O arquivo precisa ter no mínimo 2 variáveis numéricas.")
+                st.warning("O arquivo precisa conter no mínimo 2 variáveis numéricas.")
         else:
-            st.info("Envie o Arquivo 2 (.mat) na barra lateral para exibir os dados.")
+            st.info("Envie o Arquivo 2 (.mat) na barra lateral para carregar a telemetria.")
 
     # -------------------------------------------------------------------
     # ABA DADOS SIMULADOS
     # -------------------------------------------------------------------
     with tab_sim:
-        st.caption("Sinal simulado iniciando em 0 segundos.")
-        sim_data = gerar_dados_simulados(num_pontos=300, dt=dt_amostragem)
+        sim_data = gerar_dados_simulados()
         plotar_grafico_duplo_eixo(
             serie_esq=sim_data["speedData"],
             serie_dir=sim_data["socData"],
             nome_eixo_esq="Velocidade (km/h)",
             nome_eixo_dir="SOC_calc (%)",
-            titulo="Simulação Numérica: Tempo decorrido a partir de 0s"
+            titulo="Simulação Numérica (dt = 0.1s)"
         )
 
+        st.markdown("---")
+        col_ps1, col_ps2 = st.columns(2)
+        with col_ps1:
+            valores_vel = [pt[1] for pt in sim_data["speedData"]]
+            plotar_pizza_condicoes(valores_vel, "Velocidade (km/h)")
+        with col_ps2:
+            valores_soc = [pt[1] for pt in sim_data["socData"]]
+            plotar_pizza_condicoes(valores_soc, "SOC_calc (%)")
+
 # =======================================================================
-# 7. CONTROLE DE FLUXO
+# 8. CONTROLE DE FLUXO
 # =======================================================================
 if st.session_state["authenticated"]:
     main_app()
