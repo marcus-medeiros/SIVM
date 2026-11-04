@@ -111,14 +111,20 @@ def carregar_arquivo_mat(arquivo_upload):
         return {}
 
 # =======================================================================
-# 4. GERAÇÃO DE DADOS SIMULADOS (TEMPO COM DT = 0.1s)
+# 4. GERAÇÃO DE DADOS SIMULADOS (COM AS 4 CONDIÇÕES)
 # =======================================================================
-def gerar_dados_simulados(num_pontos=500, dt=DT_AMOSTRAGEM):
+def gerar_dados_simulados(num_pontos=600, dt=DT_AMOSTRAGEM):
     speed_data = []
     soc_data = []
 
     speed = 45.0
     soc = 95.0
+
+    # Contadores para as 4 condições
+    c_boo = 0
+    c_neu = 0
+    c_alt1 = 0
+    c_alt2 = 0
 
     for i in range(num_pontos):
         t_sec = round(i * dt, 2)
@@ -131,13 +137,32 @@ def gerar_dados_simulados(num_pontos=500, dt=DT_AMOSTRAGEM):
         speed_data.append([t_sec, round(speed, 2)])
         soc_data.append([t_sec, round(soc, 2)])
 
+        # Distribuição simulada entre as 4 condições
+        r = random.random()
+        if r < 0.35:
+            c_boo += 1
+        elif r < 0.65:
+            c_neu += 1
+        elif r < 0.85:
+            c_alt1 += 1
+        else:
+            c_alt2 += 1
+
+    condicoes_totais = {
+        "condicao_boo": c_boo,
+        "condicao_neu": c_neu,
+        "condicao_alt (1)": c_alt1,
+        "condicao_alt (2)": c_alt2,
+    }
+
     return {
         "speedData": speed_data,
         "socData": soc_data,
+        "condicoes": condicoes_totais,
     }
 
 # =======================================================================
-# 5. GRÁFICO TEMPORAL COM DUPLO EIXO Y (ÁREA + LINHA)
+# 5. GRÁFICO TEMPORAL DUPLO EIXO Y (ÁREA + LINHA)
 # =======================================================================
 def plotar_grafico_duplo_eixo(
     serie_esq,
@@ -248,45 +273,35 @@ def plotar_grafico_duplo_eixo(
     st_echarts(options=options, height="480px")
 
 # =======================================================================
-# 6. GRÁFICO DE PIZZA: % DAS CONDIÇÕES OPERACIONAIS
+# 6. GRÁFICO DE PIZZA: % DAS 4 CONDIÇÕES (CONDICAO_BOO, NEU, ALT...)
 # =======================================================================
-def plotar_pizza_condicoes(vetor_valores, nome_var):
-    """Calcula a distribuição percentual das condições de regime de operação."""
-    vals = np.array(vetor_valores)
-    q33 = np.percentile(vals, 33)
-    q66 = np.percentile(vals, 66)
+def plotar_pizza_condicoes_especificas(dados_condicoes, titulo="Distribuição das Condições"):
+    """
+    dados_condicoes: dict {nome_condicao: contagem_ou_tempo}
+    Plota no formato do modelo de Pizza com percentual, legenda à esquerda e sombra.
+    """
+    pie_data = [{"value": int(v), "name": str(k)} for k, v in dados_condicoes.items() if v > 0]
 
-    # Classificação em 3 condições de operação
-    cond_baixa = int(np.sum(vals <= q33))
-    cond_media = int(np.sum((vals > q33) & (vals <= q66)))
-    cond_alta = int(np.sum(vals > q66))
-
-    pie_options = {
+    options = {
         "title": {
-            "text": f"Distribuição das Condições: {nome_var}",
-            "subtext": "Tempo de permanência em cada faixa operacional",
+            "text": titulo,
+            "subtext": "Porcentagem de tempo por condição",
             "left": "center",
         },
         "tooltip": {
             "trigger": "item",
-            "formatter": "{a} <br/>{b}: <b>{c} amostras</b> ({d}%)"
+            "formatter": "{a} <br/>{b}: <b>{c}</b> ({d}%)"
         },
         "legend": {
-            "orient": "horizontal",
-            "bottom": "0%",
-            "left": "center"
+            "orient": "vertical",
+            "left": "left"
         },
         "series": [
             {
                 "name": "Condição",
                 "type": "pie",
-                "radius": "55%",
-                "center": ["50%", "50%"],
-                "data": [
-                    {"value": cond_baixa, "name": f"Baixa Demanda (≤ {q33:.1f})", "itemStyle": {"color": "#2ed573"}},
-                    {"value": cond_media, "name": f"Operação Normal ({q33:.1f} a {q66:.1f})", "itemStyle": {"color": "#ffa502"}},
-                    {"value": cond_alta, "name": f"Alta Demanda (> {q66:.1f})", "itemStyle": {"color": "#ff4757"}},
-                ],
+                "radius": "50%",
+                "data": pie_data,
                 "emphasis": {
                     "itemStyle": {
                         "shadowBlur": 10,
@@ -298,7 +313,33 @@ def plotar_pizza_condicoes(vetor_valores, nome_var):
         ],
     }
 
-    st_echarts(options=pie_options, height="380px")
+    st_echarts(options=options, height="420px")
+
+def extrair_ou_selecionar_condicoes(vars_dict, sufixo_key):
+    """
+    Identifica automaticamente ou permite selecionar as 4 variáveis de condição.
+    """
+    chaves = list(vars_dict.keys())
+    
+    # Busca heurística por variáveis com nome condicao ou cond
+    candidatos_boo = [c for c in chaves if "boo" in c.lower()]
+    candidatos_neu = [c for c in chaves if "neu" in c.lower()]
+    candidatos_alt = [c for c in chaves if "alt" in c.lower()]
+
+    with st.expander("⚙️ Mapeamento das Variáveis de Condição", expanded=False):
+        c1, c2, c3, c4 = st.columns(4)
+        v_boo = c1.selectbox("Condição Boost / Boo:", chaves, index=chaves.index(candidatos_boo[0]) if candidatos_boo else 0, key=f"sel_boo_{sufixo_key}")
+        v_neu = c2.selectbox("Condição Neutra / Neu:", chaves, index=chaves.index(candidatos_neu[0]) if candidatos_neu else min(1, len(chaves)-1), key=f"sel_neu_{sufixo_key}")
+        v_alt1 = c3.selectbox("Condição 3 (ex: condicao_alt 1):", chaves, index=chaves.index(candidatos_alt[0]) if candidatos_alt else min(2, len(chaves)-1), key=f"sel_alt1_{sufixo_key}")
+        v_alt2 = c4.selectbox("Condição 4 (ex: condicao_alt 2):", chaves, index=chaves.index(candidatos_alt[1]) if len(candidatos_alt) > 1 else min(3, len(chaves)-1), key=f"sel_alt2_{sufixo_key}")
+
+    # Calcula a soma de pontos (ocorrências / tempo ativo) de cada uma
+    return {
+        v_boo: int(np.sum(vars_dict[v_boo] > 0)),
+        v_neu: int(np.sum(vars_dict[v_neu] > 0)),
+        v_alt1: int(np.sum(vars_dict[v_alt1] > 0)),
+        v_alt2: int(np.sum(vars_dict[v_alt2] > 0)),
+    }
 
 # =======================================================================
 # 7. APLICAÇÃO PRINCIPAL
@@ -318,7 +359,7 @@ def main_app():
         st.markdown("---")
         st.info(f"⏱️ **Passo de Amostragem:** Fixo em `{DT_AMOSTRAGEM} s`")
 
-    st.title("Painel de Telemetria e Condições Operacionais")
+    st.title("Painel de Telemetria e Comparativo de Condições")
 
     tab_mat1, tab_mat2, tab_sim = st.tabs(["📁 Arquivo .MAT 1", "📁 Arquivo .MAT 2", "📊 Dados Simulados"])
 
@@ -346,11 +387,9 @@ def main_app():
                 )
 
                 st.markdown("---")
-                col_p1, col_p2 = st.columns(2)
-                with col_p1:
-                    plotar_pizza_condicoes(vars_1[var_esq], var_esq)
-                with col_p2:
-                    plotar_pizza_condicoes(vars_1[var_dir], var_dir)
+                st.subheader("📊 Distribuição Percentual das Condições")
+                condicoes_map_1 = extrair_ou_selecionar_condicoes(vars_1, "mat1")
+                plotar_pizza_condicoes_especificas(condicoes_map_1, titulo=f"Condições Operacionais - {arquivo_1.name}")
             else:
                 st.warning("O arquivo precisa conter no mínimo 2 variáveis numéricas.")
         else:
@@ -380,11 +419,9 @@ def main_app():
                 )
 
                 st.markdown("---")
-                col_p3, col_p4 = st.columns(2)
-                with col_p3:
-                    plotar_pizza_condicoes(vars_2[var_esq2], var_esq2)
-                with col_p4:
-                    plotar_pizza_condicoes(vars_2[var_dir2], var_dir2)
+                st.subheader("📊 Distribuição Percentual das Condições")
+                condicoes_map_2 = extrair_ou_selecionar_condicoes(vars_2, "mat2")
+                plotar_pizza_condicoes_especificas(condicoes_map_2, titulo=f"Condições Operacionais - {arquivo_2.name}")
             else:
                 st.warning("O arquivo precisa conter no mínimo 2 variáveis numéricas.")
         else:
@@ -404,13 +441,8 @@ def main_app():
         )
 
         st.markdown("---")
-        col_ps1, col_ps2 = st.columns(2)
-        with col_ps1:
-            valores_vel = [pt[1] for pt in sim_data["speedData"]]
-            plotar_pizza_condicoes(valores_vel, "Velocidade (km/h)")
-        with col_ps2:
-            valores_soc = [pt[1] for pt in sim_data["socData"]]
-            plotar_pizza_condicoes(valores_soc, "SOC_calc (%)")
+        st.subheader("📊 Distribuição Percentual das Condições (Simuladas)")
+        plotar_pizza_condicoes_especificas(sim_data["condicoes"], titulo="Condições de Operação (condicao_boo, neu, alt)")
 
 # =======================================================================
 # 8. CONTROLE DE FLUXO
