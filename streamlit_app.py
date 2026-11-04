@@ -9,13 +9,20 @@ from scipy.io import loadmat
 
 # Configuração da página inicial
 st.set_page_config(
-    page_title="SIVM - Telemetria & Estatística",
+    page_title="SIVM - Telemetria, Estatística & Simulação",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # Passo de tempo de amostragem fixado em 0.1 s
 DT_AMOSTRAGEM = 0.1
+
+# Cores oficiais extraídas das figuras
+COR_BOOST = "#702082"        # Roxo
+COR_NEUTRO = "#9e9e9e"       # Cinza (ou Cargas Auxiliares / Neutro)
+COR_ALTERNADOR = "#f39200"   # Laranja
+COR_REGEN = "#008848"        # Verde
+COR_CARGAS_AUX = "#424242"   # Cinza Escuro
 
 # Inicialização de variáveis de sessão
 if "authenticated" not in st.session_state:
@@ -25,7 +32,6 @@ if "authenticated" not in st.session_state:
 # 1. DETECÇÃO AUTOMÁTICA DE UNIDADES
 # =======================================================================
 def extrair_unidade(nome_var: str) -> str:
-    """Extrai unidades entre parênteses/colchetes ou por palavras-chave."""
     match = re.search(r"[\(\[]([^\)\]]+)[\)\]]", nome_var)
     if match:
         return match.group(1).strip()
@@ -97,7 +103,6 @@ def check_login():
 # 3. PROCESSAMENTO DE ARQUIVOS .MAT
 # =======================================================================
 def carregar_arquivo_mat(arquivo_upload):
-    """Carrega arquivo .mat e extrai vetores numéricos 1D."""
     try:
         conteudo = loadmat(arquivo_upload)
         variaveis = {
@@ -111,7 +116,7 @@ def carregar_arquivo_mat(arquivo_upload):
         return {}
 
 # =======================================================================
-# 4. GERAÇÃO DE DADOS SIMULADOS (FALLBACK)
+# 4. GERAÇÃO DE DADOS SIMULADOS (TELEMETRIA)
 # =======================================================================
 def gerar_dados_simulados(num_pontos=600, dt=DT_AMOSTRAGEM):
     speed_data = []
@@ -272,14 +277,8 @@ def plotar_grafico_duplo_eixo(
 # =======================================================================
 # 6. GRÁFICO DE PIZZA (ESTATÍSTICA DAS CONDIÇÕES)
 # =======================================================================
-# =======================================================================
-# 6. GRÁFICO DE PIZZA COM PORCENTAGENS VISÍVEIS
-# =======================================================================
 def plotar_pizza_condicoes(dados_condicoes, titulo="Distribuição das Condições"):
-    """Plota o gráfico de pizza exibindo as porcentagens diretamente nas fatias e legenda."""
     pie_data = [{"value": int(v), "name": str(k)} for k, v in dados_condicoes.items() if v > 0]
-
-    # Calcula o total para formatar as porcentagens também na legenda lateral
     total_pontos = sum(item["value"] for item in pie_data) if pie_data else 1
 
     options = {
@@ -292,7 +291,6 @@ def plotar_pizza_condicoes(dados_condicoes, titulo="Distribuição das Condiçõ
             "trigger": "item",
             "formatter": "{a} <br/>{b}: <b>{c} amostras</b> ({d}%)"
         },
-        # Legenda à esquerda exibindo Nome + Porcentagem
         "legend": {
             "orient": "vertical",
             "left": "left",
@@ -315,18 +313,13 @@ def plotar_pizza_condicoes(dados_condicoes, titulo="Distribuição das Condiçõ
                 "type": "pie",
                 "radius": "55%",
                 "data": pie_data,
-                # Rótulo diretamente sobre/ao lado das fatias
                 "label": {
                     "show": True,
-                    "formatter": "{b}\n{d}%",   # Mostra o Nome e o Valor Percentual fixo
+                    "formatter": "{b}\n{d}%",
                     "fontSize": 12,
                     "fontWeight": "bold"
                 },
-                "labelLine": {
-                    "show": True,
-                    "length": 15,
-                    "length2": 10
-                },
+                "labelLine": {"show": True, "length": 15, "length2": 10},
                 "emphasis": {
                     "itemStyle": {
                         "shadowBlur": 10,
@@ -341,14 +334,12 @@ def plotar_pizza_condicoes(dados_condicoes, titulo="Distribuição das Condiçõ
     st_echarts(options=options, height="450px")
 
 def extrair_condicoes_automaticamente(vars_dict):
-    """Localiza automaticamente variáveis que contenham 'condicao' no nome."""
     resultado = {}
     for chave, vetor in vars_dict.items():
         chave_lower = chave.lower()
         if "condicao" in chave_lower or "cond" in chave_lower:
             resultado[chave] = int(np.sum(vetor > 0))
     
-    # Se não encontrar pelo prefixo exato, faz busca por palavras-chave
     if not resultado:
         for chave, vetor in vars_dict.items():
             chave_lower = chave.lower()
@@ -358,16 +349,175 @@ def extrair_condicoes_automaticamente(vars_dict):
     return resultado
 
 # =======================================================================
-# 7. APLICAÇÃO PRINCIPAL
+# 7. GRÁFICOS DO NOVO MÓDULO DE SIMULAÇÃO
+# =======================================================================
+
+# 7.1 Gráfico de Barras Horizontais Empilhadas (Tipo Figura 1 com mesmas cores)
+def plotar_barras_horizontais_condicoes(ciclos, dados_segmentos):
+    """
+    ciclos: Lista com os nomes dos ciclos/testes (ex: ['EB HGW', 'ITEMM HGW', 'EB FTP', 'ITEMM FTP'])
+    dados_segmentos: Dicionário contendo os valores em porcentagem (%) para cada categoria
+    """
+    options = {
+        "title": {
+            "text": "Distribuição Percentual por Condição (100% Empilhado)",
+            "left": "center"
+        },
+        "tooltip": {
+            "trigger": "axis",
+            "axisPointer": {"type": "shadow"},
+            "formatter": JsCode("""
+                (params) => {
+                    let res = '<b>' + params[0].name + '</b><br/>';
+                    params.forEach(item => {
+                        res += item.marker + ' ' + item.seriesName + ': <b>' + item.value + '%</b><br/>';
+                    });
+                    return res;
+                }
+            """).js_code
+        },
+        "legend": {
+            "top": "8%",
+            "data": ["Boost", "Neutro / Cargas", "Alternador", "Frenagem Reg."]
+        },
+        "grid": {
+            "left": "12%",
+            "right": "8%",
+            "bottom": "10%",
+            "top": "18%",
+            "containLabel": True
+        },
+        "xAxis": {
+            "type": "value",
+            "max": 100,
+            "axisLabel": {"formatter": "{value}%"},
+            "splitLine": {"show": True, "lineStyle": {"type": "dashed"}}
+        },
+        "yAxis": {
+            "type": "category",
+            "data": ciclos,
+            "axisLine": {"show": True}
+        },
+        "series": [
+            {
+                "name": "Boost",
+                "type": "bar",
+                "stack": "total",
+                "itemStyle": {"color": COR_BOOST, "borderColor": "#333", "borderWidth": 0.5},
+                "label": {"show": True, "formatter": "{c}%", "color": "#fff", "fontWeight": "bold"},
+                "data": dados_segmentos["Boost"]
+            },
+            {
+                "name": "Neutro / Cargas",
+                "type": "bar",
+                "stack": "total",
+                "itemStyle": {"color": COR_NEUTRO, "borderColor": "#333", "borderWidth": 0.5},
+                "label": {"show": True, "formatter": "{c}%", "color": "#fff", "fontWeight": "bold"},
+                "data": dados_segmentos["Neutro"]
+            },
+            {
+                "name": "Alternador",
+                "type": "bar",
+                "stack": "total",
+                "itemStyle": {"color": COR_ALTERNADOR, "borderColor": "#333", "borderWidth": 0.5},
+                "label": {"show": True, "formatter": "{c}%", "color": "#fff", "fontWeight": "bold"},
+                "data": dados_segmentos["Alternador"]
+            },
+            {
+                "name": "Frenagem Reg.",
+                "type": "bar",
+                "stack": "total",
+                "itemStyle": {"color": COR_REGEN, "borderColor": "#333", "borderWidth": 0.5},
+                "label": {"show": True, "formatter": "{c}%", "color": "#fff", "fontWeight": "bold"},
+                "data": dados_segmentos["Frenagem"]
+            }
+        ]
+    }
+    st_echarts(options=options, height="450px")
+
+# 7.2 Gráfico de Barras com Eixo Positivo e Negativo (Balanço de Carga por Modo)
+def plotar_balanco_carga_positivo_negativo(categorias_ciclo, dados_balanco):
+    """
+    categorias_ciclo: Lista com os ciclos ['ITEMM FTP', 'EB FTP', 'ITEMM HGW', 'EB HGW']
+    dados_balanco: Dicionário contendo os valores positivos e negativos de cada modo
+    """
+    options = {
+        "title": {
+            "text": "Balanço de Carga por Modo",
+            "left": "center"
+        },
+        "tooltip": {
+            "trigger": "axis",
+            "axisPointer": {"type": "shadow"}
+        },
+        "legend": {
+            "top": "8%",
+            "data": ["Cargas Auxiliares", "Boost", "Frenagem Regenerativa", "Alternador"]
+        },
+        "grid": {
+            "left": "6%",
+            "right": "6%",
+            "bottom": "10%",
+            "top": "18%",
+            "containLabel": True
+        },
+        "xAxis": {
+            "type": "category",
+            "data": categorias_ciclo,
+            "axisTick": {"alignWithLabel": True},
+            "axisLine": {"onZero": True}  # Coloca a linha do eixo exatamente no 0
+        },
+        "yAxis": {
+            "type": "value",
+            "name": "Balanço de Carga (Ah)",
+            "nameLocation": "middle",
+            "nameGap": 35,
+            "splitLine": {"show": True, "lineStyle": {"type": "dashed"}}
+        },
+        "series": [
+            {
+                "name": "Cargas Auxiliares",
+                "type": "bar",
+                "itemStyle": {"color": COR_CARGAS_AUX, "borderColor": "#000", "borderWidth": 0.5},
+                "label": {"show": True, "position": "bottom", "fontWeight": "bold"},
+                "data": dados_balanco["Cargas Auxiliares"]
+            },
+            {
+                "name": "Boost",
+                "type": "bar",
+                "itemStyle": {"color": COR_BOOST, "borderColor": "#000", "borderWidth": 0.5},
+                "label": {"show": True, "position": "bottom", "fontWeight": "bold"},
+                "data": dados_balanco["Boost"]
+            },
+            {
+                "name": "Frenagem Regenerativa",
+                "type": "bar",
+                "itemStyle": {"color": COR_REGEN, "borderColor": "#000", "borderWidth": 0.5},
+                "label": {"show": True, "position": "top", "fontWeight": "bold"},
+                "data": dados_balanco["Frenagem"]
+            },
+            {
+                "name": "Alternador",
+                "type": "bar",
+                "itemStyle": {"color": COR_ALTERNADOR, "borderColor": "#000", "borderWidth": 0.5},
+                "label": {"show": True, "position": "top", "fontWeight": "bold"},
+                "data": dados_balanco["Alternador"]
+            }
+        ]
+    }
+    st_echarts(options=options, height="480px")
+
+# =======================================================================
+# 8. APLICAÇÃO PRINCIPAL
 # =======================================================================
 def main_app():
     with st.sidebar:
         st.markdown("<h2 style='color: #ce4545; text-align: center;'>- SIVM -</h2>", unsafe_allow_html=True)
         
-        # Menu de Navegação
+        # Menu de Navegação com a nova opção "Simulação"
         pagina_selecionada = st.radio(
             "Selecione o Módulo:",
-            options=["📈 Telemetria", "📊 Estatística"],
+            options=["📈 Telemetria", "📊 Estatística", "🎯 Simulação"],
             index=0
         )
 
@@ -450,7 +600,7 @@ def main_app():
             )
 
     # -------------------------------------------------------------------
-    # MÓDULO 2: ESTATÍSTICA (GRÁFICOS DE PIZZA)
+    # MÓDULO 2: ESTATÍSTICA (PIZZAS)
     # -------------------------------------------------------------------
     elif pagina_selecionada == "📊 Estatística":
         st.title("Estatística de Condições Operacionais")
@@ -458,7 +608,6 @@ def main_app():
 
         col_arq1, col_arq2 = st.columns(2)
 
-        # Gráfico Pizza Arquivo 1
         with col_arq1:
             st.subheader("📁 Arquivo 1")
             if arquivo_1:
@@ -467,11 +616,10 @@ def main_app():
                 if condicoes_1:
                     plotar_pizza_condicoes(condicoes_1, titulo=f"Condições — {arquivo_1.name}")
                 else:
-                    st.warning("Nenhuma variável de condição ('condicao_boo', 'neu', 'alt') foi identificada no Arquivo 1.")
+                    st.warning("Nenhuma variável de condição foi identificada no Arquivo 1.")
             else:
                 st.info("Faça o upload do Arquivo 1 na barra lateral.")
 
-        # Gráfico Pizza Arquivo 2
         with col_arq2:
             st.subheader("📁 Arquivo 2")
             if arquivo_2:
@@ -480,11 +628,10 @@ def main_app():
                 if condicoes_2:
                     plotar_pizza_condicoes(condicoes_2, titulo=f"Condições — {arquivo_2.name}")
                 else:
-                    st.warning("Nenhuma variável de condição ('condicao_boo', 'neu', 'alt') foi identificada no Arquivo 2.")
+                    st.warning("Nenhuma variável de condição foi identificada no Arquivo 2.")
             else:
                 st.info("Faça o upload do Arquivo 2 na barra lateral.")
 
-        # Exibição dos dados simulados se nenhum arquivo tiver sido carregado
         if not arquivo_1 and not arquivo_2:
             st.markdown("---")
             st.subheader("📊 Exemplo Demonstrativo (Dados Sintéticos)")
@@ -500,8 +647,46 @@ def main_app():
             with c_sim2:
                 plotar_pizza_condicoes(sim_2, titulo="Simulação - Perfil B")
 
+    # -------------------------------------------------------------------
+    # MÓDULO 3: SIMULAÇÃO (BARRAS HORIZONTAIS 100% E BALANÇO DE CARGA +/-)
+    # -------------------------------------------------------------------
+    elif pagina_selecionada == "🎯 Simulação":
+        st.title("Módulo de Simulação e Balanço Energético")
+
+        # ===============================================================
+        # VALORES CONFIGURÁVEIS (Edite diretamente aqui os seus dados)
+        # ===============================================================
+        
+        # 1. Dados do Gráfico de Barras Horizontais Empilhadas (Tipo Figura 1)
+        # Ordem de exibição de baixo para cima no eixo Y:
+        ciclos_horizontais = ["EB HGW", "ITEMM HGW", "EB FTP", "ITEMM FTP"]
+        dados_horizontais = {
+            "Boost": [9.3, 8.6, 7.4, 5.4],
+            "Neutro": [12.6, 15.0, 43.1, 43.9],
+            "Alternador": [49.9, 69.7, 28.7, 38.9],
+            "Frenagem": [28.2, 6.8, 20.8, 11.8],
+        }
+
+        # 2. Dados do Gráfico de Balanço de Carga (+/-) (Tipo Figura 2)
+        ciclos_balanco = ["ITEMM FTP", "EB FTP", "ITEMM HGW", "EB HGW"]
+        dados_balanco = {
+            "Cargas Auxiliares": [-11.7, -11.7, -9.6, -9.6],
+            "Boost": [-3.0, -3.9, -1.9, -2.1],
+            "Frenagem": [3.6, 6.6, 1.1, 4.7],
+            "Alternador": [10.8, 7.9, 12.1, 8.4],
+        }
+
+        # Renderização dos Gráficos
+        st.markdown("### 1. Proporção das Condições por Ciclo (Barras Horizontais 100%)")
+        plotar_barras_horizontais_condicoes(ciclos_horizontais, dados_horizontais)
+
+        st.markdown("---")
+
+        st.markdown("### 2. Balanço de Carga por Modo (Valores Positivos e Negativos)")
+        plotar_balanco_carga_positivo_negativo(ciclos_balanco, dados_balanco)
+
 # =======================================================================
-# 8. CONTROLE DE FLUXO
+# 9. CONTROLE DE FLUXO
 # =======================================================================
 if st.session_state["authenticated"]:
     main_app()
