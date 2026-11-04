@@ -115,17 +115,20 @@ def gerar_dados_simulados():
     }
 
 # =======================================================================
-# 4. PLOTAGEM DO GRÁFICO (ECHARTS COM DUPLO EIXO Y E LEGENDA DINÂMICA)
+# 4. PLOTAGEM DO GRÁFICO (ESCALAS E LEGENDAS AUTOMÁTICAS)
 # =======================================================================
 def plotar_grafico_duplo_eixo(
-    speed_data,
-    soc_data,
-    nome_velocidade="Velocidade",
-    nome_soc="SOC_calc",
+    serie_esq,
+    serie_dir,
+    nome_eixo_esq,
+    nome_eixo_dir,
     break_start=None,
     break_end=None,
-    titulo="Telemetria"
+    titulo=None
 ):
+    if not titulo:
+        titulo = f"{nome_eixo_esq} vs {nome_eixo_dir}"
+
     x_axis_config = {
         "type": "time",
         "interval": 1000 * 60 * 30,
@@ -161,25 +164,26 @@ def plotar_grafico_duplo_eixo(
         "tooltip": {"show": True, "trigger": "axis", "axisPointer": {"type": "cross"}},
         "legend": {
             "top": "8%",
-            "data": [nome_velocidade, nome_soc],
+            "data": [nome_eixo_esq, nome_eixo_dir],
         },
         "grid": {"left": "6%", "right": "6%", "bottom": "15%", "containLabel": True},
         "xAxis": [x_axis_config],
         "yAxis": [
+            # Eixo Y Esquerdo (Área): Escala ajustada automaticamente aos dados
             {
                 "type": "value",
-                "name": nome_velocidade,
+                "name": nome_eixo_esq,
                 "position": "left",
+                "scale": True,  # Permite que o mínimo e máximo se ajustem sem travar no zero
                 "axisLine": {"show": True, "lineStyle": {"color": "#4b7bec"}},
                 "splitLine": {"show": True, "lineStyle": {"type": "dashed"}},
             },
+            # Eixo Y Direito (Linha): Escala ajustada automaticamente aos dados
             {
                 "type": "value",
-                "name": nome_soc,
+                "name": nome_eixo_dir,
                 "position": "right",
-                "min": 0,
-                "max": 100,
-                "axisLabel": {"formatter": "{value} %"},
+                "scale": True,  # Permite auto-escala completa
                 "axisLine": {"show": True, "lineStyle": {"color": "#20bf6b"}},
                 "splitLine": {"show": False},
             },
@@ -190,7 +194,7 @@ def plotar_grafico_duplo_eixo(
         ],
         "series": [
             {
-                "name": nome_velocidade,
+                "name": nome_eixo_esq,
                 "type": "line",
                 "yAxisIndex": 0,
                 "symbolSize": 0,
@@ -205,16 +209,16 @@ def plotar_grafico_duplo_eixo(
                         ]
                     }
                 },
-                "data": speed_data,
+                "data": serie_esq,
             },
             {
-                "name": nome_soc,
+                "name": nome_eixo_dir,
                 "type": "line",
                 "yAxisIndex": 1,
                 "symbolSize": 0,
                 "itemStyle": {"color": "#20bf6b"},
                 "lineStyle": {"width": 2.5},
-                "data": soc_data,
+                "data": serie_dir,
             },
         ],
     }
@@ -236,7 +240,7 @@ def main_app():
         arquivo_1 = st.file_uploader("Arquivo 1 (.mat)", type=["mat"], key="file1")
         arquivo_2 = st.file_uploader("Arquivo 2 (.mat)", type=["mat"], key="file2")
 
-    st.title("Painel de Telemetria: Velocidade e Bateria")
+    st.title("Painel de Telemetria Multivariável")
 
     tab_mat1, tab_mat2, tab_sim = st.tabs(["📁 Arquivo .MAT 1", "📁 Arquivo .MAT 2", "📊 Dados Simulados"])
 
@@ -246,43 +250,27 @@ def main_app():
     with tab_mat1:
         if arquivo_1:
             vars_1 = carregar_arquivo_mat(arquivo_1)
-            chaves_validas = list(vars_1.keys())
-            if len(chaves_validas) >= 2:
-                col_sel1, col_sel2 = st.columns(2)
-                v_speed_k = col_sel1.selectbox(
-                    "Variável de Velocidade (Eixo Y Esquerdo):",
-                    chaves_validas,
-                    key="v1_speed"
-                )
-                v_soc_k = col_sel2.selectbox(
-                    "Variável de SOC (Eixo Y Direito):",
-                    chaves_validas,
-                    index=min(1, len(chaves_validas) - 1),
-                    key="v1_soc"
-                )
-
-                # Customização das Legendas e Título
-                with st.expander("⚙️ Personalizar Rótulos da Legenda e Título", expanded=False):
-                    col_l1, col_l2, col_l3 = st.columns(3)
-                    label_speed_1 = col_l1.text_input("Legenda (Esquerda):", value=f"{v_speed_k} (km/h)", key="lbl1_speed")
-                    label_soc_1 = col_l2.text_input("Legenda (Direita):", value=f"{v_soc_k} (%)", key="lbl1_soc")
-                    titulo_1 = col_l3.text_input("Título do Gráfico:", value=f"{arquivo_1.name} - Telemetria", key="title_1")
+            chaves = list(vars_1.keys())
+            if len(chaves) >= 2:
+                col1, col2 = st.columns(2)
+                var_esq = col1.selectbox("Variável do Eixo Esquerdo (Área):", chaves, key="v1_left")
+                var_dir = col2.selectbox("Variável do Eixo Direito (Linha):", chaves, index=1, key="v1_right")
 
                 t_base = int(datetime.datetime(2024, 4, 9, 8, 0, tzinfo=datetime.timezone.utc).timestamp() * 1000)
-                speed_s = [[t_base + i * 1000, float(val)] for i, val in enumerate(vars_1[v_speed_k])]
-                soc_s = [[t_base + i * 1000, float(val)] for i, val in enumerate(vars_1[v_soc_k])]
+                dados_esq = [[t_base + i * 1000, float(v)] for i, v in enumerate(vars_1[var_esq])]
+                dados_dir = [[t_base + i * 1000, float(v)] for i, v in enumerate(vars_1[var_dir])]
 
                 plotar_grafico_duplo_eixo(
-                    speed_data=speed_s,
-                    soc_data=soc_s,
-                    nome_velocidade=label_speed_1,
-                    nome_soc=label_soc_1,
-                    titulo=titulo_1
+                    serie_esq=dados_esq,
+                    serie_dir=dados_dir,
+                    nome_eixo_esq=var_esq,
+                    nome_eixo_dir=var_dir,
+                    titulo=f"{arquivo_1.name} — {var_esq} vs {var_dir}"
                 )
             else:
-                st.warning("O arquivo precisa conter ao menos 2 variáveis numéricas.")
+                st.warning("O arquivo precisa ter no mínimo 2 variáveis numéricas.")
         else:
-            st.info("Envie o Arquivo 1 (.mat) pela barra lateral para visualizar o gráfico.")
+            st.info("Envie o Arquivo 1 (.mat) na barra lateral para exibir os dados.")
 
     # -------------------------------------------------------------------
     # ABA ARQUIVO 2
@@ -290,69 +278,46 @@ def main_app():
     with tab_mat2:
         if arquivo_2:
             vars_2 = carregar_arquivo_mat(arquivo_2)
-            chaves_validas2 = list(vars_2.keys())
-            if len(chaves_validas2) >= 2:
-                col_sel3, col_sel4 = st.columns(2)
-                v_speed_k2 = col_sel3.selectbox(
-                    "Variável de Velocidade (Eixo Y Esquerdo):",
-                    chaves_validas2,
-                    key="v2_speed"
-                )
-                v_soc_k2 = col_sel4.selectbox(
-                    "Variável de SOC (Eixo Y Direito):",
-                    chaves_validas2,
-                    index=min(1, len(chaves_validas2) - 1),
-                    key="v2_soc"
-                )
-
-                # Customização das Legendas e Título
-                with st.expander("⚙️ Personalizar Rótulos da Legenda e Título", expanded=False):
-                    col_l4, col_l5, col_l6 = st.columns(3)
-                    label_speed_2 = col_l4.text_input("Legenda (Esquerda):", value=f"{v_speed_k2} (km/h)", key="lbl2_speed")
-                    label_soc_2 = col_l5.text_input("Legenda (Direita):", value=f"{v_soc_k2} (%)", key="lbl2_soc")
-                    titulo_2 = col_l6.text_input("Título do Gráfico:", value=f"{arquivo_2.name} - Telemetria", key="title_2")
+            chaves2 = list(vars_2.keys())
+            if len(chaves2) >= 2:
+                col3, col4 = st.columns(2)
+                var_esq2 = col3.selectbox("Variável do Eixo Esquerdo (Área):", chaves2, key="v2_left")
+                var_dir2 = col4.selectbox("Variável do Eixo Direito (Linha):", chaves2, index=1, key="v2_right")
 
                 t_base = int(datetime.datetime(2024, 4, 9, 8, 0, tzinfo=datetime.timezone.utc).timestamp() * 1000)
-                speed_s2 = [[t_base + i * 1000, float(val)] for i, val in enumerate(vars_2[v_speed_k2])]
-                soc_s2 = [[t_base + i * 1000, float(val)] for i, val in enumerate(vars_2[v_soc_k2])]
+                dados_esq2 = [[t_base + i * 1000, float(v)] for i, v in enumerate(vars_2[var_esq2])]
+                dados_dir2 = [[t_base + i * 1000, float(v)] for i, v in enumerate(vars_2[var_dir2])]
 
                 plotar_grafico_duplo_eixo(
-                    speed_data=speed_s2,
-                    soc_data=soc_s2,
-                    nome_velocidade=label_speed_2,
-                    nome_soc=label_soc_2,
-                    titulo=titulo_2
+                    serie_esq=dados_esq2,
+                    serie_dir=dados_dir2,
+                    nome_eixo_esq=var_esq2,
+                    nome_eixo_dir=var_dir2,
+                    titulo=f"{arquivo_2.name} — {var_esq2} vs {var_dir2}"
                 )
             else:
-                st.warning("O arquivo precisa conter ao menos 2 variáveis numéricas.")
+                st.warning("O arquivo precisa ter no mínimo 2 variáveis numéricas.")
         else:
-            st.info("Envie o Arquivo 2 (.mat) pela barra lateral para visualizar o gráfico.")
+            st.info("Envie o Arquivo 2 (.mat) na barra lateral para exibir os dados.")
 
     # -------------------------------------------------------------------
     # ABA DADOS SIMULADOS
     # -------------------------------------------------------------------
     with tab_sim:
-        st.caption("Demonstração usando gerador sintético com intervalo de almoço (breaks no eixo X).")
-        
-        with st.expander("⚙️ Personalizar Rótulos da Legenda e Título", expanded=False):
-            col_ls1, col_ls2, col_ls3 = st.columns(3)
-            label_speed_sim = col_ls1.text_input("Legenda (Esquerda):", value="Velocidade (km/h)", key="lbl_sim_spd")
-            label_soc_sim = col_ls2.text_input("Legenda (Direita):", value="SOC_calc (%)", key="lbl_sim_soc")
-            titulo_sim = col_ls3.text_input("Título do Gráfico:", value="Simulação de Viagem (Intervalo 11:30 às 13:00)", key="title_sim")
-
+        st.caption("Visualização sintética demonstrando quebras de horário e auto-escala.")
         sim_data = gerar_dados_simulados()
         plotar_grafico_duplo_eixo(
-            speed_data=sim_data["speedData"],
-            soc_data=sim_data["socData"],
-            nome_velocidade=label_speed_sim,
-            nome_soc=label_soc_sim,
+            serie_esq=sim_data["speedData"],
+            serie_dir=sim_data["socData"],
+            nome_eixo_esq="Velocidade (km/h)",
+            nome_eixo_dir="SOC_calc (%)",
             break_start=sim_data["breakStart"],
             break_end=sim_data["breakEnd"],
-            titulo=titulo_sim
+            titulo="Simulação: Velocidade vs SOC_calc"
         )
 
 # =======================================================================
-# 6. FLUXO DE EXECUÇÃO
+# 6. CONTROLE DE FLUXO
 # =======================================================================
 if st.session_state["authenticated"]:
     main_app()
