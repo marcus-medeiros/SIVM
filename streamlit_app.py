@@ -2,7 +2,7 @@ import streamlit as st
 from streamlit_echarts import st_echarts, JsCode
 import pandas as pd
 import numpy as np
-import datetime
+import re
 import math
 import random
 from scipy.io import loadmat
@@ -19,7 +19,38 @@ if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
 # =======================================================================
-# 1. TELA DE LOGIN
+# 1. DETECÇÃO AUTOMÁTICA DE UNIDADES
+# =======================================================================
+def extrair_unidade(nome_var: str) -> str:
+    """Extrai unidades entre parênteses/colchetes ou por palavras-chave."""
+    match = re.search(r"[\(\[]([^\)\]]+)[\)\]]", nome_var)
+    if match:
+        return match.group(1).strip()
+
+    unidades_conhecidas = {
+        "soc": "%",
+        "speed": "km/h",
+        "velocidade": "km/h",
+        "tensao": "V",
+        "voltage": "V",
+        "corrente": "A",
+        "current": "A",
+        "potencia": "kW",
+        "power": "kW",
+        "temperatura": "°C",
+        "temp": "°C",
+        "torque": "Nm",
+        "pressao": "bar",
+        "pressure": "bar",
+    }
+    nome_lower = nome_var.lower()
+    for chave, unid in unidades_conhecidas.items():
+        if chave in nome_lower:
+            return unid
+    return ""
+
+# =======================================================================
+# 2. TELA DE LOGIN
 # =======================================================================
 def check_login():
     st.markdown("""
@@ -60,10 +91,10 @@ def check_login():
                 st.error("Usuário ou senha incorretos.")
 
 # =======================================================================
-# 2. PROCESSAMENTO DE ARQUIVOS .MAT
+# 3. PROCESSAMENTO DE ARQUIVOS .MAT
 # =======================================================================
 def carregar_arquivo_mat(arquivo_upload):
-    """Carrega arquivo .mat e extrai vetores numéricos 1D válidos."""
+    """Carrega arquivo .mat e extrai vetores numéricos 1D."""
     try:
         conteudo = loadmat(arquivo_upload)
         variaveis = {
@@ -77,113 +108,101 @@ def carregar_arquivo_mat(arquivo_upload):
         return {}
 
 # =======================================================================
-# 3. GERAÇÃO DE DADOS DE TESTE (FALLBACK QUANDO NÃO HÁ .MAT)
+# 4. GERAÇÃO DE DADOS DE TESTE (TEMPO INICIANDO EM 0s)
 # =======================================================================
-def gerar_dados_simulados():
+def gerar_dados_simulados(num_pontos=360, dt=1.0):
     speed_data = []
     soc_data = []
 
-    start_time = datetime.datetime(2024, 4, 9, 9, 30, tzinfo=datetime.timezone.utc)
-    end_time = datetime.datetime(2024, 4, 9, 15, 0, tzinfo=datetime.timezone.utc)
-    break_start = datetime.datetime(2024, 4, 9, 11, 30, tzinfo=datetime.timezone.utc)
-    break_end = datetime.datetime(2024, 4, 9, 13, 0, tzinfo=datetime.timezone.utc)
+    speed = 40.0
+    soc = 100.0
 
-    current_time = start_time
-    speed = 60.0
-    soc = 98.0
+    for i in range(num_pontos):
+        t_sec = round(i * dt, 2)
+        speed_change = (random.random() - 0.48) * 4
+        speed = max(0.0, min(140.0, speed + speed_change))
+        
+        soc_drop = (speed / 140.0) * 0.15 + 0.02
+        soc = max(0.0, soc - soc_drop)
 
-    while current_time <= end_time:
-        if current_time <= break_start or current_time >= break_end:
-            t_ms = int(current_time.timestamp() * 1000)
-
-            speed_change = (random.random() - 0.48) * 6
-            speed = max(0.0, min(120.0, speed + speed_change))
-
-            soc_drop = (speed / 120.0) * 0.35 + 0.05
-            soc = max(5.0, soc - soc_drop)
-
-            speed_data.append([t_ms, round(speed, 1)])
-            soc_data.append([t_ms, round(soc, 1)])
-
-        current_time += datetime.timedelta(minutes=1)
+        speed_data.append([t_sec, round(speed, 2)])
+        soc_data.append([t_sec, round(soc, 2)])
 
     return {
         "speedData": speed_data,
         "socData": soc_data,
-        "breakStart": int(break_start.timestamp() * 1000),
-        "breakEnd": int(break_end.timestamp() * 1000),
     }
 
 # =======================================================================
-# 4. PLOTAGEM DO GRÁFICO (ESCALAS E LEGENDAS AUTOMÁTICAS)
+# 5. PLOTAGEM COM TEMPO DE SIMULAÇÃO (EIXO X NUMÉRICO COMEÇANDO EM 0)
 # =======================================================================
 def plotar_grafico_duplo_eixo(
     serie_esq,
     serie_dir,
     nome_eixo_esq,
     nome_eixo_dir,
-    break_start=None,
-    break_end=None,
     titulo=None
 ):
     if not titulo:
         titulo = f"{nome_eixo_esq} vs {nome_eixo_dir}"
 
-    x_axis_config = {
-        "type": "time",
-        "interval": 1000 * 60 * 30,
-        "axisLabel": {
-            "showMinLabel": True,
-            "showMaxLabel": True,
-            "formatter": JsCode(
-                """(value, index, extra) => {
-                    if (!extra || !extra.break) {
-                        return echarts.time.format(value, '{HH}:{mm}', true);
-                    }
-                    if (extra.break.type === 'start') {
-                        return (
-                            echarts.time.format(extra.break.start, '{HH}:{mm}', true) +
-                            '/' +
-                            echarts.time.format(extra.break.end, '{HH}:{mm}', true)
-                        );
-                    }
-                    return '';
-                }"""
-            ).js_code,
-        },
-        "breakLabelLayout": {"moveOverlap": False},
-    }
+    unidade_esq = extrair_unidade(nome_eixo_esq)
+    unidade_dir = extrair_unidade(nome_eixo_dir)
 
-    if break_start and break_end:
-        x_axis_config["breaks"] = [{"start": break_start, "end": break_end, "gap": 0}]
-        x_axis_config["breakArea"] = {"expandOnClick": False, "zigzagAmplitude": 0, "zigzagZ": 200}
+    fmt_esq = f"{{value}} {unidade_esq}".strip() if unidade_esq else "{value}"
+    fmt_dir = f"{{value}} {unidade_dir}".strip() if unidade_dir else "{value}"
 
     options = {
-        "useUTC": True,
         "title": {"text": titulo, "left": "center"},
-        "tooltip": {"show": True, "trigger": "axis", "axisPointer": {"type": "cross"}},
+        "tooltip": {
+            "trigger": "axis",
+            "axisPointer": {"type": "cross"},
+            "formatter": JsCode(f"""
+                (params) => {{
+                    if (!params || params.length === 0) return '';
+                    let tempo = params[0].value[0];
+                    let res = '<b>Tempo: ' + Number(tempo).toFixed(2) + ' s</b><br/>';
+                    params.forEach(item => {{
+                        let val = Number(item.value[1]).toFixed(2);
+                        let unid = item.seriesIndex === 0 ? '{unidade_esq}' : '{unidade_dir}';
+                        res += item.marker + ' ' + item.seriesName + ': <b>' + val + ' ' + unid + '</b><br/>';
+                    }});
+                    return res;
+                }}
+            """).js_code,
+        },
         "legend": {
             "top": "8%",
             "data": [nome_eixo_esq, nome_eixo_dir],
         },
         "grid": {"left": "6%", "right": "6%", "bottom": "15%", "containLabel": True},
-        "xAxis": [x_axis_config],
-        "yAxis": [
-            # Eixo Y Esquerdo (Área): Escala ajustada automaticamente aos dados
+        "xAxis": [
             {
                 "type": "value",
-                "name": nome_eixo_esq,
+                "name": "Tempo (s)",
+                "nameLocation": "middle",
+                "nameGap": 30,
+                "min": 0,
+                "axisLabel": {"formatter": "{value} s"},
+                "splitLine": {"show": True, "lineStyle": {"type": "dashed"}},
+            }
+        ],
+        "yAxis": [
+            {
+                "type": "value",
+                "name": f"{nome_eixo_esq} ({unidade_esq})" if unidade_esq and unidade_esq not in nome_eixo_esq else nome_eixo_esq,
                 "position": "left",
-                "scale": True,  # Permite que o mínimo e máximo se ajustem sem travar no zero
+                "scale": True,
+                "axisLabel": {"formatter": fmt_esq},
                 "axisLine": {"show": True, "lineStyle": {"color": "#4b7bec"}},
                 "splitLine": {"show": True, "lineStyle": {"type": "dashed"}},
             },
-            # Eixo Y Direito (Linha): Escala ajustada automaticamente aos dados
             {
                 "type": "value",
-                "name": nome_eixo_dir,
+                "name": f"{nome_eixo_dir} ({unidade_dir})" if unidade_dir and unidade_dir not in nome_eixo_dir else nome_eixo_dir,
                 "position": "right",
-                "scale": True,  # Permite auto-escala completa
+                "scale": True,
+                "axisLabel": {"formatter": fmt_dir},
                 "axisLine": {"show": True, "lineStyle": {"color": "#20bf6b"}},
                 "splitLine": {"show": False},
             },
@@ -226,7 +245,7 @@ def plotar_grafico_duplo_eixo(
     st_echarts(options=options, height="520px")
 
 # =======================================================================
-# 5. APLICAÇÃO PRINCIPAL
+# 6. APLICAÇÃO PRINCIPAL
 # =======================================================================
 def main_app():
     with st.sidebar:
@@ -239,6 +258,10 @@ def main_app():
         st.markdown("### 📂 Upload de Arquivos .mat")
         arquivo_1 = st.file_uploader("Arquivo 1 (.mat)", type=["mat"], key="file1")
         arquivo_2 = st.file_uploader("Arquivo 2 (.mat)", type=["mat"], key="file2")
+        
+        st.markdown("---")
+        st.markdown("### ⏱️ Configuração de Tempo")
+        dt_amostragem = st.number_input("Passo de tempo (Δt em segundos)", min_value=0.0001, value=1.0, step=0.1, format="%.4f")
 
     st.title("Painel de Telemetria Multivariável")
 
@@ -256,9 +279,9 @@ def main_app():
                 var_esq = col1.selectbox("Variável do Eixo Esquerdo (Área):", chaves, key="v1_left")
                 var_dir = col2.selectbox("Variável do Eixo Direito (Linha):", chaves, index=1, key="v1_right")
 
-                t_base = int(datetime.datetime(2024, 4, 9, 8, 0, tzinfo=datetime.timezone.utc).timestamp() * 1000)
-                dados_esq = [[t_base + i * 1000, float(v)] for i, v in enumerate(vars_1[var_esq])]
-                dados_dir = [[t_base + i * 1000, float(v)] for i, v in enumerate(vars_1[var_dir])]
+                # Vetor de tempo iniciando em 0.0s com passo dt
+                dados_esq = [[round(i * dt_amostragem, 4), float(v)] for i, v in enumerate(vars_1[var_esq])]
+                dados_dir = [[round(i * dt_amostragem, 4), float(v)] for i, v in enumerate(vars_1[var_dir])]
 
                 plotar_grafico_duplo_eixo(
                     serie_esq=dados_esq,
@@ -284,9 +307,8 @@ def main_app():
                 var_esq2 = col3.selectbox("Variável do Eixo Esquerdo (Área):", chaves2, key="v2_left")
                 var_dir2 = col4.selectbox("Variável do Eixo Direito (Linha):", chaves2, index=1, key="v2_right")
 
-                t_base = int(datetime.datetime(2024, 4, 9, 8, 0, tzinfo=datetime.timezone.utc).timestamp() * 1000)
-                dados_esq2 = [[t_base + i * 1000, float(v)] for i, v in enumerate(vars_2[var_esq2])]
-                dados_dir2 = [[t_base + i * 1000, float(v)] for i, v in enumerate(vars_2[var_dir2])]
+                dados_esq2 = [[round(i * dt_amostragem, 4), float(v)] for i, v in enumerate(vars_2[var_esq2])]
+                dados_dir2 = [[round(i * dt_amostragem, 4), float(v)] for i, v in enumerate(vars_2[var_dir2])]
 
                 plotar_grafico_duplo_eixo(
                     serie_esq=dados_esq2,
@@ -304,20 +326,18 @@ def main_app():
     # ABA DADOS SIMULADOS
     # -------------------------------------------------------------------
     with tab_sim:
-        st.caption("Visualização sintética demonstrando quebras de horário e auto-escala.")
-        sim_data = gerar_dados_simulados()
+        st.caption("Sinal simulado iniciando em 0 segundos.")
+        sim_data = gerar_dados_simulados(num_pontos=300, dt=dt_amostragem)
         plotar_grafico_duplo_eixo(
             serie_esq=sim_data["speedData"],
             serie_dir=sim_data["socData"],
             nome_eixo_esq="Velocidade (km/h)",
             nome_eixo_dir="SOC_calc (%)",
-            break_start=sim_data["breakStart"],
-            break_end=sim_data["breakEnd"],
-            titulo="Simulação: Velocidade vs SOC_calc"
+            titulo="Simulação Numérica: Tempo decorrido a partir de 0s"
         )
 
 # =======================================================================
-# 6. CONTROLE DE FLUXO
+# 7. CONTROLE DE FLUXO
 # =======================================================================
 if st.session_state["authenticated"]:
     main_app()
