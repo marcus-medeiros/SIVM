@@ -272,9 +272,15 @@ def plotar_grafico_duplo_eixo(
 # =======================================================================
 # 6. GRÁFICO DE PIZZA (ESTATÍSTICA DAS CONDIÇÕES)
 # =======================================================================
+# =======================================================================
+# 6. GRÁFICO DE PIZZA COM PORCENTAGENS VISÍVEIS
+# =======================================================================
 def plotar_pizza_condicoes(dados_condicoes, titulo="Distribuição das Condições"):
-    """Plota o gráfico de pizza formatado com porcentagens."""
+    """Plota o gráfico de pizza exibindo as porcentagens diretamente nas fatias e legenda."""
     pie_data = [{"value": int(v), "name": str(k)} for k, v in dados_condicoes.items() if v > 0]
+
+    # Calcula o total para formatar as porcentagens também na legenda lateral
+    total_pontos = sum(item["value"] for item in pie_data) if pie_data else 1
 
     options = {
         "title": {
@@ -284,11 +290,24 @@ def plotar_pizza_condicoes(dados_condicoes, titulo="Distribuição das Condiçõ
         },
         "tooltip": {
             "trigger": "item",
-            "formatter": "{a} <br/>{b}: <b>{c}</b> ({d}%)"
+            "formatter": "{a} <br/>{b}: <b>{c} amostras</b> ({d}%)"
         },
+        # Legenda à esquerda exibindo Nome + Porcentagem
         "legend": {
             "orient": "vertical",
-            "left": "left"
+            "left": "left",
+            "formatter": JsCode(f"""
+                (name) => {{
+                    let data = {pie_data};
+                    let total = {total_pontos};
+                    let target = data.find(item => item.name === name);
+                    if (target) {{
+                        let pct = ((target.value / total) * 100).toFixed(1);
+                        return name + ': ' + pct + '%';
+                    }}
+                    return name;
+                }}
+            """).js_code,
         },
         "series": [
             {
@@ -296,6 +315,18 @@ def plotar_pizza_condicoes(dados_condicoes, titulo="Distribuição das Condiçõ
                 "type": "pie",
                 "radius": "55%",
                 "data": pie_data,
+                # Rótulo diretamente sobre/ao lado das fatias
+                "label": {
+                    "show": True,
+                    "formatter": "{b}\n{d}%",   # Mostra o Nome e o Valor Percentual fixo
+                    "fontSize": 12,
+                    "fontWeight": "bold"
+                },
+                "labelLine": {
+                    "show": True,
+                    "length": 15,
+                    "length2": 10
+                },
                 "emphasis": {
                     "itemStyle": {
                         "shadowBlur": 10,
