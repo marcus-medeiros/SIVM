@@ -661,17 +661,17 @@ def main_app():
         # Ordem de exibição de baixo para cima no eixo Y:
         ciclos_horizontais = ["EB HGW", "ITEMM HGW", "EB FTP", "ITEMM FTP"]
         dados_horizontais = {
-            "Boost": [9.3, 24.0, 7.4, 29.0],
-            "Neutro": [12.6, 0.2, 43.1, 20.9],
-            "Alternador": [49.9, 47.5, 28.7, 27.6],
-            "Frenagem": [28.3, 28.4, 20.8, 22.5],
+            "Boost": [9.3, 8.7, 7.4, 6.2],
+            "Neutro": [12.6, 14.9, 43.1, 43.0],
+            "Alternador": [49.9, 47.8, 28.0, 27.6],
+            "Frenagem": [28.3, 28.6, 20.8, 22.8],
         }
 
         # 2. Dados do Gráfico de Balanço de Carga (+/-) (Tipo Figura 2)
         ciclos_balanco = ["ITEMM FTP", "EB FTP", "ITEMM HGW", "EB HGW"]
         dados_balanco = {
             "Cargas Auxiliares": [-11.7, -11.7, -9.6, -9.6],
-            "Boost": [-3.6, -3.9, -2.0, -2.1],
+            "Boost": [-3.8, -3.9, -2.0, -2.1],
             "Frenagem": [6.7, 6.6, 4.9, 4.7],
             "Alternador": [7.9, 7.9, 8.5, 8.4],
         }
