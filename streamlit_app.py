@@ -664,7 +664,7 @@ def main_app():
             "Boost": [9.3, 8.6, 7.4, 5.4],
             "Neutro": [12.6, 15.0, 43.1, 43.9],
             "Alternador": [49.9, 69.7, 28.7, 38.9],
-            "Frenagem": [28.2, 6.8, 20.8, 11.8],
+            "Frenagem": [28.3, 6.8, 20.8, 11.8],
         }
 
         # 2. Dados do Gráfico de Balanço de Carga (+/-) (Tipo Figura 2)
