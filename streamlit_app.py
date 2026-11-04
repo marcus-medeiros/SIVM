@@ -9,7 +9,7 @@ from scipy.io import loadmat
 
 # Configuração da página inicial
 st.set_page_config(
-    page_title="SIVM - Telemetria & Sinais",
+    page_title="SIVM - Telemetria & Estatística",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -111,7 +111,7 @@ def carregar_arquivo_mat(arquivo_upload):
         return {}
 
 # =======================================================================
-# 4. GERAÇÃO DE DADOS SIMULADOS (COM AS 4 CONDIÇÕES)
+# 4. GERAÇÃO DE DADOS SIMULADOS (FALLBACK)
 # =======================================================================
 def gerar_dados_simulados(num_pontos=600, dt=DT_AMOSTRAGEM):
     speed_data = []
@@ -120,7 +120,6 @@ def gerar_dados_simulados(num_pontos=600, dt=DT_AMOSTRAGEM):
     speed = 45.0
     soc = 95.0
 
-    # Contadores para as 4 condições
     c_boo = 0
     c_neu = 0
     c_alt1 = 0
@@ -137,7 +136,6 @@ def gerar_dados_simulados(num_pontos=600, dt=DT_AMOSTRAGEM):
         speed_data.append([t_sec, round(speed, 2)])
         soc_data.append([t_sec, round(soc, 2)])
 
-        # Distribuição simulada entre as 4 condições
         r = random.random()
         if r < 0.35:
             c_boo += 1
@@ -148,21 +146,20 @@ def gerar_dados_simulados(num_pontos=600, dt=DT_AMOSTRAGEM):
         else:
             c_alt2 += 1
 
-    condicoes_totais = {
+    condicoes = {
         "condicao_boo": c_boo,
         "condicao_neu": c_neu,
-        "condicao_alt (1)": c_alt1,
-        "condicao_alt (2)": c_alt2,
+        "condicao_alt": c_alt1 + c_alt2,
     }
 
     return {
         "speedData": speed_data,
         "socData": soc_data,
-        "condicoes": condicoes_totais,
+        "condicoes": condicoes,
     }
 
 # =======================================================================
-# 5. GRÁFICO TEMPORAL DUPLO EIXO Y (ÁREA + LINHA)
+# 5. GRÁFICO TEMPORAL MULTIVARIÁVEL (ECHARTS)
 # =======================================================================
 def plotar_grafico_duplo_eixo(
     serie_esq,
@@ -273,19 +270,16 @@ def plotar_grafico_duplo_eixo(
     st_echarts(options=options, height="480px")
 
 # =======================================================================
-# 6. GRÁFICO DE PIZZA: % DAS 4 CONDIÇÕES (CONDICAO_BOO, NEU, ALT...)
+# 6. GRÁFICO DE PIZZA (ESTATÍSTICA DAS CONDIÇÕES)
 # =======================================================================
-def plotar_pizza_condicoes_especificas(dados_condicoes, titulo="Distribuição das Condições"):
-    """
-    dados_condicoes: dict {nome_condicao: contagem_ou_tempo}
-    Plota no formato do modelo de Pizza com percentual, legenda à esquerda e sombra.
-    """
+def plotar_pizza_condicoes(dados_condicoes, titulo="Distribuição das Condições"):
+    """Plota o gráfico de pizza formatado com porcentagens."""
     pie_data = [{"value": int(v), "name": str(k)} for k, v in dados_condicoes.items() if v > 0]
 
     options = {
         "title": {
             "text": titulo,
-            "subtext": "Porcentagem de tempo por condição",
+            "subtext": "Tempo em cada condição",
             "left": "center",
         },
         "tooltip": {
@@ -300,7 +294,7 @@ def plotar_pizza_condicoes_especificas(dados_condicoes, titulo="Distribuição d
             {
                 "name": "Condição",
                 "type": "pie",
-                "radius": "50%",
+                "radius": "55%",
                 "data": pie_data,
                 "emphasis": {
                     "itemStyle": {
@@ -313,33 +307,24 @@ def plotar_pizza_condicoes_especificas(dados_condicoes, titulo="Distribuição d
         ],
     }
 
-    st_echarts(options=options, height="420px")
+    st_echarts(options=options, height="450px")
 
-def extrair_ou_selecionar_condicoes(vars_dict, sufixo_key):
-    """
-    Identifica automaticamente ou permite selecionar as 4 variáveis de condição.
-    """
-    chaves = list(vars_dict.keys())
+def extrair_condicoes_automaticamente(vars_dict):
+    """Localiza automaticamente variáveis que contenham 'condicao' no nome."""
+    resultado = {}
+    for chave, vetor in vars_dict.items():
+        chave_lower = chave.lower()
+        if "condicao" in chave_lower or "cond" in chave_lower:
+            resultado[chave] = int(np.sum(vetor > 0))
     
-    # Busca heurística por variáveis com nome condicao ou cond
-    candidatos_boo = [c for c in chaves if "boo" in c.lower()]
-    candidatos_neu = [c for c in chaves if "neu" in c.lower()]
-    candidatos_alt = [c for c in chaves if "alt" in c.lower()]
+    # Se não encontrar pelo prefixo exato, faz busca por palavras-chave
+    if not resultado:
+        for chave, vetor in vars_dict.items():
+            chave_lower = chave.lower()
+            if any(termo in chave_lower for termo in ["boo", "neu", "alt"]):
+                resultado[chave] = int(np.sum(vetor > 0))
 
-    with st.expander("⚙️ Mapeamento das Variáveis de Condição", expanded=False):
-        c1, c2, c3, c4 = st.columns(4)
-        v_boo = c1.selectbox("Condição Boost / Boo:", chaves, index=chaves.index(candidatos_boo[0]) if candidatos_boo else 0, key=f"sel_boo_{sufixo_key}")
-        v_neu = c2.selectbox("Condição Neutra / Neu:", chaves, index=chaves.index(candidatos_neu[0]) if candidatos_neu else min(1, len(chaves)-1), key=f"sel_neu_{sufixo_key}")
-        v_alt1 = c3.selectbox("Condição 3 (ex: condicao_alt 1):", chaves, index=chaves.index(candidatos_alt[0]) if candidatos_alt else min(2, len(chaves)-1), key=f"sel_alt1_{sufixo_key}")
-        v_alt2 = c4.selectbox("Condição 4 (ex: condicao_alt 2):", chaves, index=chaves.index(candidatos_alt[1]) if len(candidatos_alt) > 1 else min(3, len(chaves)-1), key=f"sel_alt2_{sufixo_key}")
-
-    # Calcula a soma de pontos (ocorrências / tempo ativo) de cada uma
-    return {
-        v_boo: int(np.sum(vars_dict[v_boo] > 0)),
-        v_neu: int(np.sum(vars_dict[v_neu] > 0)),
-        v_alt1: int(np.sum(vars_dict[v_alt1] > 0)),
-        v_alt2: int(np.sum(vars_dict[v_alt2] > 0)),
-    }
+    return resultado
 
 # =======================================================================
 # 7. APLICAÇÃO PRINCIPAL
@@ -347,102 +332,142 @@ def extrair_ou_selecionar_condicoes(vars_dict, sufixo_key):
 def main_app():
     with st.sidebar:
         st.markdown("<h2 style='color: #ce4545; text-align: center;'>- SIVM -</h2>", unsafe_allow_html=True)
-        if st.button("🚪 Sair", use_container_width=True):
-            st.session_state["authenticated"] = False
-            st.rerun()
+        
+        # Menu de Navegação
+        pagina_selecionada = st.radio(
+            "Selecione o Módulo:",
+            options=["📈 Telemetria", "📊 Estatística"],
+            index=0
+        )
 
         st.markdown("---")
         st.markdown("### 📂 Upload de Arquivos .mat")
         arquivo_1 = st.file_uploader("Arquivo 1 (.mat)", type=["mat"], key="file1")
         arquivo_2 = st.file_uploader("Arquivo 2 (.mat)", type=["mat"], key="file2")
-        
+
         st.markdown("---")
         st.info(f"⏱️ **Passo de Amostragem:** Fixo em `{DT_AMOSTRAGEM} s`")
 
-    st.title("Painel de Telemetria e Comparativo de Condições")
-
-    tab_mat1, tab_mat2, tab_sim = st.tabs(["📁 Arquivo .MAT 1", "📁 Arquivo .MAT 2", "📊 Dados Simulados"])
+        if st.button("🚪 Sair", use_container_width=True):
+            st.session_state["authenticated"] = False
+            st.rerun()
 
     # -------------------------------------------------------------------
-    # ABA ARQUIVO 1
+    # MÓDULO 1: TELEMETRIA
     # -------------------------------------------------------------------
-    with tab_mat1:
-        if arquivo_1:
-            vars_1 = carregar_arquivo_mat(arquivo_1)
-            chaves = list(vars_1.keys())
-            if len(chaves) >= 2:
-                col1, col2 = st.columns(2)
-                var_esq = col1.selectbox("Variável Esquerda (Área):", chaves, key="v1_left")
-                var_dir = col2.selectbox("Variável Direita (Linha):", chaves, index=1, key="v1_right")
+    if pagina_selecionada == "📈 Telemetria":
+        st.title("Painel de Telemetria Multivariável")
 
-                dados_esq = [[round(i * DT_AMOSTRAGEM, 2), float(v)] for i, v in enumerate(vars_1[var_esq])]
-                dados_dir = [[round(i * DT_AMOSTRAGEM, 2), float(v)] for i, v in enumerate(vars_1[var_dir])]
+        tab_mat1, tab_mat2, tab_sim = st.tabs(["📁 Arquivo .MAT 1", "📁 Arquivo .MAT 2", "📊 Dados Simulados"])
 
-                plotar_grafico_duplo_eixo(
-                    serie_esq=dados_esq,
-                    serie_dir=dados_dir,
-                    nome_eixo_esq=var_esq,
-                    nome_eixo_dir=var_dir,
-                    titulo=f"{arquivo_1.name} — {var_esq} vs {var_dir}"
-                )
+        with tab_mat1:
+            if arquivo_1:
+                vars_1 = carregar_arquivo_mat(arquivo_1)
+                chaves = list(vars_1.keys())
+                if len(chaves) >= 2:
+                    col1, col2 = st.columns(2)
+                    var_esq = col1.selectbox("Variável Esquerda (Área):", chaves, key="v1_left")
+                    var_dir = col2.selectbox("Variável Direita (Linha):", chaves, index=1, key="v1_right")
 
-                st.markdown("---")
-                st.subheader("📊 Distribuição Percentual das Condições")
-                condicoes_map_1 = extrair_ou_selecionar_condicoes(vars_1, "mat1")
-                plotar_pizza_condicoes_especificas(condicoes_map_1, titulo=f"Condições Operacionais - {arquivo_1.name}")
+                    dados_esq = [[round(i * DT_AMOSTRAGEM, 2), float(v)] for i, v in enumerate(vars_1[var_esq])]
+                    dados_dir = [[round(i * DT_AMOSTRAGEM, 2), float(v)] for i, v in enumerate(vars_1[var_dir])]
+
+                    plotar_grafico_duplo_eixo(
+                        serie_esq=dados_esq,
+                        serie_dir=dados_dir,
+                        nome_eixo_esq=var_esq,
+                        nome_eixo_dir=var_dir,
+                        titulo=f"{arquivo_1.name} — {var_esq} vs {var_dir}"
+                    )
+                else:
+                    st.warning("O arquivo precisa conter ao menos 2 variáveis numéricas.")
             else:
-                st.warning("O arquivo precisa conter no mínimo 2 variáveis numéricas.")
-        else:
-            st.info("Envie o Arquivo 1 (.mat) na barra lateral para carregar a telemetria.")
+                st.info("Envie o Arquivo 1 (.mat) na barra lateral para carregar a telemetria.")
 
-    # -------------------------------------------------------------------
-    # ABA ARQUIVO 2
-    # -------------------------------------------------------------------
-    with tab_mat2:
-        if arquivo_2:
-            vars_2 = carregar_arquivo_mat(arquivo_2)
-            chaves2 = list(vars_2.keys())
-            if len(chaves2) >= 2:
-                col3, col4 = st.columns(2)
-                var_esq2 = col3.selectbox("Variável Esquerda (Área):", chaves2, key="v2_left")
-                var_dir2 = col4.selectbox("Variável Direita (Linha):", chaves2, index=1, key="v2_right")
+        with tab_mat2:
+            if arquivo_2:
+                vars_2 = carregar_arquivo_mat(arquivo_2)
+                chaves2 = list(vars_2.keys())
+                if len(chaves2) >= 2:
+                    col3, col4 = st.columns(2)
+                    var_esq2 = col3.selectbox("Variável Esquerda (Área):", chaves2, key="v2_left")
+                    var_dir2 = col4.selectbox("Variável Direita (Linha):", chaves2, index=1, key="v2_right")
 
-                dados_esq2 = [[round(i * DT_AMOSTRAGEM, 2), float(v)] for i, v in enumerate(vars_2[var_esq2])]
-                dados_dir2 = [[round(i * DT_AMOSTRAGEM, 2), float(v)] for i, v in enumerate(vars_2[var_dir2])]
+                    dados_esq2 = [[round(i * DT_AMOSTRAGEM, 2), float(v)] for i, v in enumerate(vars_2[var_esq2])]
+                    dados_dir2 = [[round(i * DT_AMOSTRAGEM, 2), float(v)] for i, v in enumerate(vars_2[var_dir2])]
 
-                plotar_grafico_duplo_eixo(
-                    serie_esq=dados_esq2,
-                    serie_dir=dados_dir2,
-                    nome_eixo_esq=var_esq2,
-                    nome_eixo_dir=var_dir2,
-                    titulo=f"{arquivo_2.name} — {var_esq2} vs {var_dir2}"
-                )
-
-                st.markdown("---")
-                st.subheader("📊 Distribuição Percentual das Condições")
-                condicoes_map_2 = extrair_ou_selecionar_condicoes(vars_2, "mat2")
-                plotar_pizza_condicoes_especificas(condicoes_map_2, titulo=f"Condições Operacionais - {arquivo_2.name}")
+                    plotar_grafico_duplo_eixo(
+                        serie_esq=dados_esq2,
+                        serie_dir=dados_dir2,
+                        nome_eixo_esq=var_esq2,
+                        nome_eixo_dir=var_dir2,
+                        titulo=f"{arquivo_2.name} — {var_esq2} vs {var_dir2}"
+                    )
+                else:
+                    st.warning("O arquivo precisa conter ao menos 2 variáveis numéricas.")
             else:
-                st.warning("O arquivo precisa conter no mínimo 2 variáveis numéricas.")
-        else:
-            st.info("Envie o Arquivo 2 (.mat) na barra lateral para carregar a telemetria.")
+                st.info("Envie o Arquivo 2 (.mat) na barra lateral para carregar a telemetria.")
+
+        with tab_sim:
+            sim_data = gerar_dados_simulados()
+            plotar_grafico_duplo_eixo(
+                serie_esq=sim_data["speedData"],
+                serie_dir=sim_data["socData"],
+                nome_eixo_esq="Velocidade (km/h)",
+                nome_eixo_dir="SOC_calc (%)",
+                titulo="Simulação Numérica (dt = 0.1s)"
+            )
 
     # -------------------------------------------------------------------
-    # ABA DADOS SIMULADOS
+    # MÓDULO 2: ESTATÍSTICA (GRÁFICOS DE PIZZA)
     # -------------------------------------------------------------------
-    with tab_sim:
-        sim_data = gerar_dados_simulados()
-        plotar_grafico_duplo_eixo(
-            serie_esq=sim_data["speedData"],
-            serie_dir=sim_data["socData"],
-            nome_eixo_esq="Velocidade (km/h)",
-            nome_eixo_dir="SOC_calc (%)",
-            titulo="Simulação Numérica (dt = 0.1s)"
-        )
+    elif pagina_selecionada == "📊 Estatística":
+        st.title("Estatística de Condições Operacionais")
+        st.markdown("Comparativo percentual de permanência em cada condição de operação.")
 
-        st.markdown("---")
-        st.subheader("📊 Distribuição Percentual das Condições (Simuladas)")
-        plotar_pizza_condicoes_especificas(sim_data["condicoes"], titulo="Condições de Operação (condicao_boo, neu, alt)")
+        col_arq1, col_arq2 = st.columns(2)
+
+        # Gráfico Pizza Arquivo 1
+        with col_arq1:
+            st.subheader("📁 Arquivo 1")
+            if arquivo_1:
+                vars_1 = carregar_arquivo_mat(arquivo_1)
+                condicoes_1 = extrair_condicoes_automaticamente(vars_1)
+                if condicoes_1:
+                    plotar_pizza_condicoes(condicoes_1, titulo=f"Condições — {arquivo_1.name}")
+                else:
+                    st.warning("Nenhuma variável de condição ('condicao_boo', 'neu', 'alt') foi identificada no Arquivo 1.")
+            else:
+                st.info("Faça o upload do Arquivo 1 na barra lateral.")
+
+        # Gráfico Pizza Arquivo 2
+        with col_arq2:
+            st.subheader("📁 Arquivo 2")
+            if arquivo_2:
+                vars_2 = carregar_arquivo_mat(arquivo_2)
+                condicoes_2 = extrair_condicoes_automaticamente(vars_2)
+                if condicoes_2:
+                    plotar_pizza_condicoes(condicoes_2, titulo=f"Condições — {arquivo_2.name}")
+                else:
+                    st.warning("Nenhuma variável de condição ('condicao_boo', 'neu', 'alt') foi identificada no Arquivo 2.")
+            else:
+                st.info("Faça o upload do Arquivo 2 na barra lateral.")
+
+        # Exibição dos dados simulados se nenhum arquivo tiver sido carregado
+        if not arquivo_1 and not arquivo_2:
+            st.markdown("---")
+            st.subheader("📊 Exemplo Demonstrativo (Dados Sintéticos)")
+            c_sim1, c_sim2 = st.columns(2)
+            sim_1 = gerar_dados_simulados()["condicoes"]
+            sim_2 = {
+                "condicao_boo": random.randint(100, 300),
+                "condicao_neu": random.randint(250, 450),
+                "condicao_alt": random.randint(150, 350)
+            }
+            with c_sim1:
+                plotar_pizza_condicoes(sim_1, titulo="Simulação - Perfil A")
+            with c_sim2:
+                plotar_pizza_condicoes(sim_2, titulo="Simulação - Perfil B")
 
 # =======================================================================
 # 8. CONTROLE DE FLUXO
