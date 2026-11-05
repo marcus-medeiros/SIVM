@@ -18,7 +18,7 @@ st.set_page_config(
 DT_AMOSTRAGEM = 0.1
 
 VARIAVEIS_PLOTAVEIS = [
-    "fSpeed_com'", 
+    "fSpeed_com", 
     "fAceleracao_com",
     "fCorrenteBSG_com",
     "fCorrenteFiltro", 
@@ -34,7 +34,7 @@ VARIAVEIS_PLOTAVEIS = [
     "fTensaoChumbo_com", 
     "fTensaoFreio_com", 
     "fThrottle_com",
-    "hSpeed_com'", 
+    "hSpeed_com", 
     "hAceleracao_com",
     "hCorrenteBSG_com",
     "hCorrenteFiltro", 
