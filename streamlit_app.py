@@ -405,7 +405,7 @@ def plotar_barras_horizontais_condicoes(ciclos, dados_segmentos):
                 "stack": "total",
                 "itemStyle": {"color": COR_BOOST, "borderColor": "#333", "borderWidth": 0.5},
                 "label": {"show": True, "formatter": "{c}%", "color": "#fff", "fontWeight": "bold"},
-                "data": dados_segmentos["Boost"]
+                "data": [round(float(v), 2) for v in dados_segmentos["Boost"]]
             },
             {
                 "name": "Neutro / Cargas",
@@ -413,7 +413,7 @@ def plotar_barras_horizontais_condicoes(ciclos, dados_segmentos):
                 "stack": "total",
                 "itemStyle": {"color": COR_NEUTRO, "borderColor": "#333", "borderWidth": 0.5},
                 "label": {"show": True, "formatter": "{c}%", "color": "#fff", "fontWeight": "bold"},
-                "data": dados_segmentos["Neutro"]
+                "data": [round(float(v), 2) for v in dados_segmentos["Neutro"]]
             },
             {
                 "name": "Alternador",
@@ -421,7 +421,7 @@ def plotar_barras_horizontais_condicoes(ciclos, dados_segmentos):
                 "stack": "total",
                 "itemStyle": {"color": COR_ALTERNADOR, "borderColor": "#333", "borderWidth": 0.5},
                 "label": {"show": True, "formatter": "{c}%", "color": "#fff", "fontWeight": "bold"},
-                "data": dados_segmentos["Alternador"]
+                "data": [round(float(v), 2) for v in dados_segmentos["Alternador"]]
             },
             {
                 "name": "Frenagem Reg.",
@@ -429,7 +429,7 @@ def plotar_barras_horizontais_condicoes(ciclos, dados_segmentos):
                 "stack": "total",
                 "itemStyle": {"color": COR_REGEN, "borderColor": "#333", "borderWidth": 0.5},
                 "label": {"show": True, "formatter": "{c}%", "color": "#fff", "fontWeight": "bold"},
-                "data": dados_segmentos["Frenagem"]
+                "data": [round(float(v), 2) for v in dados_segmentos["Frenagem"]]
             }
         ]
     }
