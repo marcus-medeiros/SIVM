@@ -17,6 +17,19 @@ st.set_page_config(
 # Passo de tempo de amostragem fixado em 0.1 s
 DT_AMOSTRAGEM = 0.1
 
+VARIAVEIS_PLOTAVEIS = [
+    "fSpeed_com",
+    "fSOC_calc",
+    "hSpeed_com",
+    "hSOC_calc",
+    "fRPM_com",
+    "hRPM_com",
+    "fThrottle_com",
+    "hThrottle_com",
+    "fTempBattery_com",
+    "hTempBattery_com"
+]
+
 # Cores oficiais extraídas das figuras
 COR_BOOST = "#702082"        # Roxo
 COR_NEUTRO = "#9e9e9e"       # Cinza (ou Cargas Auxiliares / Neutro)
@@ -544,7 +557,10 @@ def main_app():
         with tab_mat1:
             if arquivo_1:
                 vars_1 = carregar_arquivo_mat(arquivo_1)
-                chaves = list(vars_1.keys())
+                chaves = [
+                var for var in VARIAVEIS_PLOTAVEIS
+                if var in vars_1
+                ]
                 if len(chaves) >= 2:
                     col1, col2 = st.columns(2)
                     var_esq = col1.selectbox("Variável Esquerda (Área):", chaves, key="v1_left")
@@ -568,7 +584,10 @@ def main_app():
         with tab_mat2:
             if arquivo_2:
                 vars_2 = carregar_arquivo_mat(arquivo_2)
-                chaves2 = list(vars_2.keys())
+                chaves = [
+                var for var in VARIAVEIS_PLOTAVEIS
+                if var in vars_2
+                ]
                 if len(chaves2) >= 2:
                     col3, col4 = st.columns(2)
                     var_esq2 = col3.selectbox("Variável Esquerda (Área):", chaves2, key="v2_left")
