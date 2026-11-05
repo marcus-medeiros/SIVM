@@ -503,7 +503,7 @@ def main_app():
     if pagina_selecionada == "📈 Telemetria":
         st.title("Painel de Telemetria Multivariável")
 
-        tab_mat1, tab_mat2 = st.tabs(["📁 Arquivo .MAT 1", "📁 Arquivo .MAT 2")
+        tab_mat1, tab_mat2 = st.tabs(["📁 Arquivo .MAT 1", "📁 Arquivo .MAT 2"])
 
         with tab_mat1:
             if arquivo_1:
