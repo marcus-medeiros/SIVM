@@ -150,7 +150,27 @@ def carregar_arquivo_mat(arquivo_upload):
         st.error(f"Erro ao ler {arquivo_upload.name}: {e}")
         return {}
 
+def identificar_bateria(nome_arquivo):
+    """
+    Identifica o tipo de bateria pelo nome:
+    AGM - L2 - 23092026 - FTP.mat
+    AGM - L3 - 24092026 - Highway.mat
+    """
 
+    nome = nome_arquivo.upper()
+
+    match = re.search(
+        r"AGM\s*-\s*(L2|L3)\s*-\s*(\d{8})\s*-\s*(FTP|HIGHWAY)",
+        nome
+    )
+
+    if not match:
+        raise ValueError(
+            f"Nome de arquivo fora do padrão esperado: {nome_arquivo}"
+        )
+
+    return match.group(1), match.group(2)
+    
 def obter_escalar_mat(variaveis, nome_variavel):
     """Retorna uma variável escalar de um arquivo MAT como float."""
     if nome_variavel not in variaveis:
@@ -638,8 +658,55 @@ def main_app():
         )
 
         if arquivo_1 and arquivo_2:
-            vars_ftp = carregar_arquivo_mat(arquivo_1)
-            vars_hgw = carregar_arquivo_mat(arquivo_2)
+
+        vars_ftp = carregar_arquivo_mat(arquivo_1)
+        vars_hgw = carregar_arquivo_mat(arquivo_2)
+    
+        try:
+            bateria_ftp, data_ftp = identificar_bateria(arquivo_1.name)
+            bateria_hgw, data_hgw = identificar_bateria(arquivo_2.name)
+    
+            if bateria_ftp != bateria_hgw or data_ftp != data_hgw:
+                st.error(
+                    "Os arquivos FTP e Highway devem pertencer "
+                    "ao mesmo tipo de bateria e à mesma data."
+                )
+                st.stop()
+    
+            bateria = bateria_ftp
+    
+            st.success(
+                f"Referências EB selecionadas automaticamente: AGM {bateria}"
+            )
+    
+        except ValueError as e:
+            st.error(str(e))
+            st.stop()
+
+            # =======================================================
+            # REFERÊNCIAS EB POR TIPO DE BATERIA
+            # Médias dos testes SINGLE_AGM L2 e SINGLE_AGM L3
+            # =======================================================
+            
+            REFERENCIAS_EB = {
+            
+                "L2": {
+                    "Cargas Auxiliares": -11.98,
+                    "Boost": -3.40,
+                    "Frenagem": 6.83,
+                    "Alternador": 8.35
+                },
+            
+                "L3": {
+                    "Cargas Auxiliares": -11.77,
+                    "Boost": -2.33,
+                    "Frenagem": 6.00,
+                    "Alternador": 7.43
+                }
+            
+            }
+            
+            ref_eb = REFERENCIAS_EB[bateria]
 
             # Variáveis ITEMM necessárias para os dois gráficos.
             variaveis_percentuais_ftp = [
@@ -730,30 +797,35 @@ def main_app():
                     "ITEMM FTP", "EB FTP", "ITEMM HGW", "EB HGW"
                 ]
                 dados_balanco = {
+                
                     "Cargas Auxiliares": [
                         obter_escalar_mat(vars_ftp, "fCapacidade_auxiliares"),
-                        -11.7,
+                        ref_eb["Cargas Auxiliares"],
                         obter_escalar_mat(vars_hgw, "hCapacidade_auxiliares"),
-                        -9.6,
+                        ref_eb["Cargas Auxiliares"]
                     ],
+                
                     "Boost": [
                         obter_escalar_mat(vars_ftp, "fCapacidade_boost"),
-                        -3.9,
+                        ref_eb["Boost"],
                         obter_escalar_mat(vars_hgw, "hCapacidade_boost"),
-                        -2.1,
+                        ref_eb["Boost"]
                     ],
+                
                     "Frenagem": [
                         obter_escalar_mat(vars_ftp, "fCapacidade_frenagem"),
-                        6.6,
+                        ref_eb["Frenagem"],
                         obter_escalar_mat(vars_hgw, "hCapacidade_frenagem"),
-                        4.7,
+                        ref_eb["Frenagem"]
                     ],
+                
                     "Alternador": [
                         obter_escalar_mat(vars_ftp, "fCapacidade_alternador"),
-                        7.9,
+                        ref_eb["Alternador"],
                         obter_escalar_mat(vars_hgw, "hCapacidade_alternador"),
-                        8.4,
-                    ],
+                        ref_eb["Alternador"]
+                    ]
+                
                 }
 
                 st.markdown("### 2. Balanço de Carga por Modo (Ah)")
