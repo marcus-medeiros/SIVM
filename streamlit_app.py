@@ -129,54 +129,6 @@ def carregar_arquivo_mat(arquivo_upload):
         return {}
 
 # =======================================================================
-# 4. GERAÇÃO DE DADOS SIMULADOS (TELEMETRIA)
-# =======================================================================
-def gerar_dados_simulados(num_pontos=600, dt=DT_AMOSTRAGEM):
-    speed_data = []
-    soc_data = []
-
-    speed = 45.0
-    soc = 95.0
-
-    c_boo = 0
-    c_neu = 0
-    c_alt1 = 0
-    c_alt2 = 0
-
-    for i in range(num_pontos):
-        t_sec = round(i * dt, 2)
-        speed_change = (random.random() - 0.49) * 3.5
-        speed = max(0.0, min(130.0, speed + speed_change))
-
-        soc_drop = (speed / 130.0) * 0.04 + 0.005
-        soc = max(5.0, soc - soc_drop)
-
-        speed_data.append([t_sec, round(speed, 2)])
-        soc_data.append([t_sec, round(soc, 2)])
-
-        r = random.random()
-        if r < 0.35:
-            c_boo += 1
-        elif r < 0.65:
-            c_neu += 1
-        elif r < 0.85:
-            c_alt1 += 1
-        else:
-            c_alt2 += 1
-
-    condicoes = {
-        "condicao_boo": c_boo,
-        "condicao_neu": c_neu,
-        "condicao_alt": c_alt1 + c_alt2,
-    }
-
-    return {
-        "speedData": speed_data,
-        "socData": soc_data,
-        "condicoes": condicoes,
-    }
-
-# =======================================================================
 # 5. GRÁFICO TEMPORAL MULTIVARIÁVEL (ECHARTS)
 # =======================================================================
 def plotar_grafico_duplo_eixo(
@@ -533,7 +485,6 @@ def main_app():
             options=["📈 Telemetria", "📊 Estatística", "🎯 Simulação"],
             index=0
         )
-
         st.markdown("---")
         st.markdown("### 📂 Upload de Arquivos .mat")
         arquivo_1 = st.file_uploader("Arquivo 1 (.mat)", type=["mat"], key="file1")
@@ -607,17 +558,6 @@ def main_app():
                     st.warning("O arquivo precisa conter ao menos 2 variáveis numéricas.")
             else:
                 st.info("Envie o Arquivo 2 (.mat) na barra lateral para carregar a telemetria.")
-
-        with tab_sim:
-            sim_data = gerar_dados_simulados()
-            plotar_grafico_duplo_eixo(
-                serie_esq=sim_data["speedData"],
-                serie_dir=sim_data["socData"],
-                nome_eixo_esq="Velocidade (km/h)",
-                nome_eixo_dir="SOC_calc (%)",
-                titulo="Simulação Numérica (dt = 0.1s)"
-            )
-
     # -------------------------------------------------------------------
     # MÓDULO 2: ESTATÍSTICA (PIZZAS)
     # -------------------------------------------------------------------
@@ -650,22 +590,6 @@ def main_app():
                     st.warning("Nenhuma variável de condição foi identificada no Arquivo 2.")
             else:
                 st.info("Faça o upload do Arquivo 2 na barra lateral.")
-
-        if not arquivo_1 and not arquivo_2:
-            st.markdown("---")
-            st.subheader("📊 Exemplo Demonstrativo (Dados Sintéticos)")
-            c_sim1, c_sim2 = st.columns(2)
-            sim_1 = gerar_dados_simulados()["condicoes"]
-            sim_2 = {
-                "condicao_boo": random.randint(100, 300),
-                "condicao_neu": random.randint(250, 450),
-                "condicao_alt": random.randint(150, 350)
-            }
-            with c_sim1:
-                plotar_pizza_condicoes(sim_1, titulo="Simulação - Perfil A")
-            with c_sim2:
-                plotar_pizza_condicoes(sim_2, titulo="Simulação - Perfil B")
-
     # -------------------------------------------------------------------
     # MÓDULO 3: SIMULAÇÃO (BARRAS HORIZONTAIS 100% E BALANÇO DE CARGA +/-)
     # -------------------------------------------------------------------
