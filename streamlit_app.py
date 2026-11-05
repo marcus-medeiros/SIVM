@@ -9,7 +9,7 @@ from scipy.io import loadmat
 
 # Configuração da página inicial
 st.set_page_config(
-    page_title="SIVM - Telemetria, Estatística & Simulação",
+    page_title="SIVM - Telemetria, Estatística & Análise",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -33,9 +33,24 @@ VARIAVEIS_PLOTAVEIS = [
     "fTensaoBSG_com", 
     "fTensaoChumbo_com", 
     "fTensaoFreio_com", 
-    "fThrottle_com" 
+    "fThrottle_com",
+    "hSpeed_com'", 
+    "hAceleracao_com",
+    "hCorrenteBSG_com",
+    "hCorrenteFiltro", 
+    "hCorrenteConsumoExterno_com",
+    "hFluxoVolume_com", 
+    "hLoadCarga_com", 
+    "hRPM_com", 
+    "hSOC_calc", 
+    "hTempBattery_com", 
+    "hTempCatalisador_com", 
+    "hTensaoAC1_norm", 
+    "hTensaoBSG_com", 
+    "hTensaoChumbo_com", 
+    "hTensaoFreio_com", 
+    "hThrottle_com" 
 ]
-
 
 # Cores oficiais extraídas das figuras
 COR_BOOST = "#702082"        # Roxo
@@ -134,6 +149,18 @@ def carregar_arquivo_mat(arquivo_upload):
     except Exception as e:
         st.error(f"Erro ao ler {arquivo_upload.name}: {e}")
         return {}
+
+
+def obter_escalar_mat(variaveis, nome_variavel):
+    """Retorna uma variável escalar de um arquivo MAT como float."""
+    if nome_variavel not in variaveis:
+        raise KeyError(f"A variável '{nome_variavel}' não foi encontrada no arquivo MAT.")
+
+    valores = np.asarray(variaveis[nome_variavel]).reshape(-1)
+    if valores.size == 0:
+        raise ValueError(f"A variável '{nome_variavel}' está vazia.")
+
+    return float(valores[0])
 
 # =======================================================================
 # 5. GRÁFICO TEMPORAL MULTIVARIÁVEL (ECHARTS)
@@ -487,16 +514,16 @@ def main_app():
     with st.sidebar:
         st.markdown("<h2 style='color: #ce4545; text-align: center;'>- SIVM -</h2>", unsafe_allow_html=True)
         
-        # Menu de Navegação com a nova opção "Simulação"
+        # Menu de navegação
         pagina_selecionada = st.radio(
             "Selecione o Módulo:",
-            options=["📈 Telemetria", "📊 Estatística", "🎯 Simulação"],
+            options=["📈 Telemetria", "📊 Estatística", "📉 Análise"],
             index=0
         )
         st.markdown("---")
         st.markdown("### 📂 Upload de Arquivos .mat")
-        arquivo_1 = st.file_uploader("Arquivo 1 (.mat)", type=["mat"], key="file1")
-        arquivo_2 = st.file_uploader("Arquivo 2 (.mat)", type=["mat"], key="file2")
+        arquivo_1 = st.file_uploader("Arquivo FTP (.mat)", type=["mat"], key="file1")
+        arquivo_2 = st.file_uploader("Arquivo Highway (.mat)", type=["mat"], key="file2")
 
         st.markdown("---")
         st.info(f"⏱️ **Passo de Amostragem:** Fixo em `{DT_AMOSTRAGEM} s`")
@@ -601,42 +628,143 @@ def main_app():
             else:
                 st.info("Faça o upload do Arquivo 2 na barra lateral.")
     # -------------------------------------------------------------------
-    # MÓDULO 3: SIMULAÇÃO (BARRAS HORIZONTAIS 100% E BALANÇO DE CARGA +/-)
+    # MÓDULO 3: ANÁLISE (COMPARAÇÃO ITEMM x EB)
     # -------------------------------------------------------------------
-    elif pagina_selecionada == "🎯 Simulação":
-        st.title("Módulo de Simulação e Balanço Energético")
+    elif pagina_selecionada == "📉 Análise":
+        st.title("Análise Comparativa — ITEMM x EB")
+        st.markdown(
+            "Os valores ITEMM são carregados dos arquivos MAT: FTP no Arquivo FTP "
+            "e Highway no Arquivo Highway. Os valores EB permanecem como referência."
+        )
 
-        # ===============================================================
-        # VALORES CONFIGURÁVEIS (Edite diretamente aqui os seus dados)
-        # ===============================================================
-        
-        # 1. Dados do Gráfico de Barras Horizontais Empilhadas (Tipo Figura 1)
-        # Ordem de exibição de baixo para cima no eixo Y:
-        ciclos_horizontais = ["EB HGW", "ITEMM HGW", "EB FTP", "ITEMM FTP"]
-        dados_horizontais = {
-            "Boost": [9.3, 8.6, 7.4, 5.4],
-            "Neutro": [12.6, 15.0, 43.1, 43.9],
-            "Alternador": [49.9, 69.7, 28.7, 38.9],
-            "Frenagem": [28.3, 6.8, 20.8, 11.8],
-        }
+        if arquivo_1 and arquivo_2:
+            vars_ftp = carregar_arquivo_mat(arquivo_1)
+            vars_hgw = carregar_arquivo_mat(arquivo_2)
 
-        # 2. Dados do Gráfico de Balanço de Carga (+/-) (Tipo Figura 2)
-        ciclos_balanco = ["ITEMM FTP", "EB FTP", "ITEMM HGW", "EB HGW"]
-        dados_balanco = {
-            "Cargas Auxiliares": [-11.7, -11.7, -9.6, -9.6],
-            "Boost": [-3.0, -3.9, -1.9, -2.1],
-            "Frenagem": [3.6, 6.6, 1.1, 4.7],
-            "Alternador": [10.8, 7.9, 12.1, 8.4],
-        }
+            # Variáveis ITEMM necessárias para os dois gráficos.
+            variaveis_percentuais_ftp = [
+                "fpor_boost", "fpor_idle", "fpor_alternador", "fpor_frenagem"
+            ]
+            variaveis_percentuais_hgw = [
+                "hpor_boost", "hpor_idle", "hpor_alternador", "hpor_frenagem"
+            ]
+            variaveis_capacidade_ftp = [
+                "fCapacidade_auxiliares", "fCapacidade_boost",
+                "fCapacidade_frenagem", "fCapacidade_alternador"
+            ]
+            variaveis_capacidade_hgw = [
+                "hCapacidade_auxiliares", "hCapacidade_boost",
+                "hCapacidade_frenagem", "hCapacidade_alternador"
+            ]
 
-        # Renderização dos Gráficos
-        st.markdown("### 1. Proporção das Condições por Ciclo (Barras Horizontais 100%)")
-        plotar_barras_horizontais_condicoes(ciclos_horizontais, dados_horizontais)
+            faltantes_ftp = [
+                nome for nome in variaveis_percentuais_ftp + variaveis_capacidade_ftp
+                if nome not in vars_ftp
+            ]
+            faltantes_hgw = [
+                nome for nome in variaveis_percentuais_hgw + variaveis_capacidade_hgw
+                if nome not in vars_hgw
+            ]
 
-        st.markdown("---")
+            if faltantes_ftp or faltantes_hgw:
+                if faltantes_ftp:
+                    st.error(
+                        "O arquivo FTP não contém estas variáveis: "
+                        + ", ".join(faltantes_ftp)
+                    )
+                if faltantes_hgw:
+                    st.error(
+                        "O arquivo Highway não contém estas variáveis: "
+                        + ", ".join(faltantes_hgw)
+                    )
+            else:
+                # =======================================================
+                # 1. DISTRIBUIÇÃO PERCENTUAL POR CONDIÇÃO
+                #    ITEMM vem de fpor_* e hpor_* dos arquivos MAT.
+                # =======================================================
+                ciclos_horizontais = [
+                    "EB HGW", "ITEMM HGW", "EB FTP", "ITEMM FTP"
+                ]
+                dados_horizontais = {
+                    "Boost": [
+                        9.3,
+                        obter_escalar_mat(vars_hgw, "hpor_boost"),
+                        7.4,
+                        obter_escalar_mat(vars_ftp, "fpor_boost"),
+                    ],
+                    "Neutro": [
+                        12.6,
+                        obter_escalar_mat(vars_hgw, "hpor_idle"),
+                        43.1,
+                        obter_escalar_mat(vars_ftp, "fpor_idle"),
+                    ],
+                    "Alternador": [
+                        49.9,
+                        obter_escalar_mat(vars_hgw, "hpor_alternador"),
+                        28.7,
+                        obter_escalar_mat(vars_ftp, "fpor_alternador"),
+                    ],
+                    "Frenagem": [
+                        28.3,
+                        obter_escalar_mat(vars_hgw, "hpor_frenagem"),
+                        20.8,
+                        obter_escalar_mat(vars_ftp, "fpor_frenagem"),
+                    ],
+                }
 
-        st.markdown("### 2. Balanço de Carga por Modo (Valores Positivos e Negativos)")
-        plotar_balanco_carga_positivo_negativo(ciclos_balanco, dados_balanco)
+                st.markdown(
+                    "### 1. Proporção das Condições por Ciclo "
+                    "(Barras Horizontais 100%)"
+                )
+                plotar_barras_horizontais_condicoes(
+                    ciclos_horizontais, dados_horizontais
+                )
+
+                st.markdown("---")
+
+                # =======================================================
+                # 2. BALANÇO DE CARGA POR MODO
+                #    ITEMM vem das capacidades Ah calculadas no MATLAB.
+                # =======================================================
+                ciclos_balanco = [
+                    "ITEMM FTP", "EB FTP", "ITEMM HGW", "EB HGW"
+                ]
+                dados_balanco = {
+                    "Cargas Auxiliares": [
+                        obter_escalar_mat(vars_ftp, "fCapacidade_auxiliares"),
+                        -11.7,
+                        obter_escalar_mat(vars_hgw, "hCapacidade_auxiliares"),
+                        -9.6,
+                    ],
+                    "Boost": [
+                        obter_escalar_mat(vars_ftp, "fCapacidade_boost"),
+                        -3.9,
+                        obter_escalar_mat(vars_hgw, "hCapacidade_boost"),
+                        -2.1,
+                    ],
+                    "Frenagem": [
+                        obter_escalar_mat(vars_ftp, "fCapacidade_frenagem"),
+                        6.6,
+                        obter_escalar_mat(vars_hgw, "hCapacidade_frenagem"),
+                        4.7,
+                    ],
+                    "Alternador": [
+                        obter_escalar_mat(vars_ftp, "fCapacidade_alternador"),
+                        7.9,
+                        obter_escalar_mat(vars_hgw, "hCapacidade_alternador"),
+                        8.4,
+                    ],
+                }
+
+                st.markdown("### 2. Balanço de Carga por Modo (Ah)")
+                plotar_balanco_carga_positivo_negativo(
+                    ciclos_balanco, dados_balanco
+                )
+        else:
+            st.info(
+                "Envie os dois arquivos MAT: o arquivo com os dados FTP e o "
+                "arquivo com os dados Highway."
+            )
 
 # =======================================================================
 # 9. CONTROLE DE FLUXO
