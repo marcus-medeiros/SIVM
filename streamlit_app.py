@@ -136,7 +136,8 @@ def plotar_grafico_duplo_eixo(
     serie_dir,
     nome_eixo_esq,
     nome_eixo_dir,
-    titulo=None
+    titulo=None,
+    key=None
 ):
     if not titulo:
         titulo = f"{nome_eixo_esq} vs {nome_eixo_dir}"
@@ -237,12 +238,12 @@ def plotar_grafico_duplo_eixo(
         ],
     }
 
-    st_echarts(options=options, height="480px")
+    st_echarts(options=options, height="480px", key=key)
 
 # =======================================================================
 # 6. GRÁFICO DE PIZZA (ESTATÍSTICA DAS CONDIÇÕES)
 # =======================================================================
-def plotar_pizza_condicoes(dados_condicoes, titulo="Distribuição das Condições"):
+def plotar_pizza_condicoes(dados_condicoes, titulo="Distribuição das Condições", key=None):
     pie_data = [{"value": int(v), "name": str(k)} for k, v in dados_condicoes.items() if v > 0]
     total_pontos = sum(item["value"] for item in pie_data) if pie_data else 1
 
@@ -296,7 +297,7 @@ def plotar_pizza_condicoes(dados_condicoes, titulo="Distribuição das Condiçõ
         ],
     }
 
-    st_echarts(options=options, height="450px")
+    st_echarts(options=options, height="450px", key=key)
 
 def extrair_condicoes_automaticamente(vars_dict):
     resultado = {}
@@ -525,7 +526,8 @@ def main_app():
                         serie_dir=dados_dir,
                         nome_eixo_esq=var_esq,
                         nome_eixo_dir=var_dir,
-                        titulo=f"{arquivo_1.name} — {var_esq} vs {var_dir}"
+                        titulo=f"{arquivo_1.name} — {var_esq} vs {var_dir}",
+                        key="grafico_arq1"
                     )
                 else:
                     st.warning("O arquivo precisa conter ao menos 2 variáveis numéricas.")
@@ -552,7 +554,8 @@ def main_app():
                         serie_dir=dados_dir2,
                         nome_eixo_esq=var_esq2,
                         nome_eixo_dir=var_dir2,
-                        titulo=f"{arquivo_2.name} — {var_esq2} vs {var_dir2}"
+                        titulo=f"{arquivo_2.name} — {var_esq2} vs {var_dir2}",
+                        key="grafico_arq2"
                     )
                 else:
                     st.warning("O arquivo precisa conter ao menos 2 variáveis numéricas.")
@@ -573,7 +576,7 @@ def main_app():
                 vars_1 = carregar_arquivo_mat(arquivo_1)
                 condicoes_1 = extrair_condicoes_automaticamente(vars_1)
                 if condicoes_1:
-                    plotar_pizza_condicoes(condicoes_1, titulo=f"Condições — {arquivo_1.name}")
+                    plotar_pizza_condicoes(condicoes_1, titulo=f"Condições — {arquivo_1.name}", "grafico_pizza_arq1")
                 else:
                     st.warning("Nenhuma variável de condição foi identificada no Arquivo 1.")
             else:
@@ -585,7 +588,7 @@ def main_app():
                 vars_2 = carregar_arquivo_mat(arquivo_2)
                 condicoes_2 = extrair_condicoes_automaticamente(vars_2)
                 if condicoes_2:
-                    plotar_pizza_condicoes(condicoes_2, titulo=f"Condições — {arquivo_2.name}")
+                    plotar_pizza_condicoes(condicoes_2, titulo=f"Condições — {arquivo_2.name}", "grafico_pizza_arq2"))
                 else:
                     st.warning("Nenhuma variável de condição foi identificada no Arquivo 2.")
             else:
