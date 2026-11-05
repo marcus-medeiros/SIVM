@@ -18,17 +18,24 @@ st.set_page_config(
 DT_AMOSTRAGEM = 0.1
 
 VARIAVEIS_PLOTAVEIS = [
-    "fSpeed_com",
-    "fSOC_calc",
-    "hSpeed_com",
-    "hSOC_calc",
-    "fRPM_com",
-    "hRPM_com",
-    "fThrottle_com",
-    "hThrottle_com",
-    "fTempBattery_com",
-    "hTempBattery_com"
+    "fSpeed_com'", 
+    "fAceleracao_com",
+    "fCorrenteBSG_com",
+    "fCorrenteFiltro", 
+    "fCorrenteConsumoExterno_com",
+    "fFluxoVolume_com", 
+    "fLoadCarga_com", 
+    "fRPM_com", 
+    "fSOC_calc", 
+    "fTempBattery_com", 
+    "fTempCatalisador_com", 
+    "fTensaoAC1_norm", 
+    "fTensaoBSG_com", 
+    "fTensaoChumbo_com", 
+    "fTensaoFreio_com", 
+    "fThrottle_com" 
 ]
+
 
 # Cores oficiais extraídas das figuras
 COR_BOOST = "#702082"        # Roxo
