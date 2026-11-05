@@ -648,192 +648,205 @@ def main_app():
             else:
                 st.info("Faça o upload do Arquivo 2 na barra lateral.")
     # -------------------------------------------------------------------
-    # MÓDULO 3: ANÁLISE (COMPARAÇÃO ITEMM x EB)
+    # MÓDULO 3: ANÁLISE (COMPARAÇÃO ITEMM)
+    # -------------------------------------------------------------------
+        # -------------------------------------------------------------------
+    # MÓDULO 3: ANÁLISE ITEMM
     # -------------------------------------------------------------------
     elif pagina_selecionada == "📉 Análise":
-    
-        st.title("Análise Comparativa — ITEMM x EB")
-    
+
+        st.title("Análise de Condições Operacionais — ITEMM")
+
         st.markdown(
-            "Os valores ITEMM são carregados dos arquivos MAT. "
-            "As referências EB são selecionadas automaticamente "
-            "conforme o tipo de bateria."
+            "Análise dos resultados obtidos nos ensaios ITEMM, "
+            "considerando os ciclos FTP e Highway."
         )
-    
+
         if arquivo_1 and arquivo_2:
-    
-            # Carregar arquivos
+
+            # Carregar arquivos MAT
             vars_ftp = carregar_arquivo_mat(arquivo_1)
             vars_hgw = carregar_arquivo_mat(arquivo_2)
-    
-            # Identificar bateria
-            try:
-                bateria_ftp, data_ftp = identificar_bateria(arquivo_1.name)
-                bateria_hgw, data_hgw = identificar_bateria(arquivo_2.name)
-    
-                if bateria_ftp != bateria_hgw or data_ftp != data_hgw:
-                    st.error(
-                        "Os arquivos FTP e Highway devem pertencer "
-                        "à mesma bateria e à mesma data."
-                    )
-                    st.stop()
-    
-                bateria = bateria_ftp
-    
-                st.success(
-                    f"Referências EB selecionadas automaticamente: AGM {bateria}"
-                )
-    
-            except ValueError as e:
-                st.error(str(e))
-                st.stop()
-    
-            # Referências EB
-            REFERENCIAS_EB = {
-                "L2": {
-                    "Cargas Auxiliares": -11.98,
-                    "Boost": -3.40,
-                    "Frenagem": 6.83,
-                    "Alternador": 8.35
-                },
-                "L3": {
-                    "Cargas Auxiliares": -11.77,
-                    "Boost": -2.33,
-                    "Frenagem": 6.00,
-                    "Alternador": 7.43
-                }
-            }
-    
-            ref_eb = REFERENCIAS_EB[bateria]
 
-            # Variáveis ITEMM necessárias para os dois gráficos.
+            # Variáveis de distribuição percentual
             variaveis_percentuais_ftp = [
-                "fpor_boost", "fpor_idle", "fpor_alternador", "fpor_frenagem"
-            ]
-            variaveis_percentuais_hgw = [
-                "hpor_boost", "hpor_idle", "hpor_alternador", "hpor_frenagem"
-            ]
-            variaveis_capacidade_ftp = [
-                "fCapacidade_auxiliares", "fCapacidade_boost",
-                "fCapacidade_frenagem", "fCapacidade_alternador"
-            ]
-            variaveis_capacidade_hgw = [
-                "hCapacidade_auxiliares", "hCapacidade_boost",
-                "hCapacidade_frenagem", "hCapacidade_alternador"
+                "fpor_boost",
+                "fpor_idle",
+                "fpor_alternador",
+                "fpor_frenagem"
             ]
 
+            variaveis_percentuais_hgw = [
+                "hpor_boost",
+                "hpor_idle",
+                "hpor_alternador",
+                "hpor_frenagem"
+            ]
+
+            # Variáveis de capacidade em Ah
+            variaveis_capacidade_ftp = [
+                "fCapacidade_auxiliares",
+                "fCapacidade_boost",
+                "fCapacidade_frenagem",
+                "fCapacidade_alternador"
+            ]
+
+            variaveis_capacidade_hgw = [
+                "hCapacidade_auxiliares",
+                "hCapacidade_boost",
+                "hCapacidade_frenagem",
+                "hCapacidade_alternador"
+            ]
+
+            # Verificar variáveis ausentes
             faltantes_ftp = [
-                nome for nome in variaveis_percentuais_ftp + variaveis_capacidade_ftp
+                nome for nome in (
+                    variaveis_percentuais_ftp +
+                    variaveis_capacidade_ftp
+                )
                 if nome not in vars_ftp
             ]
+
             faltantes_hgw = [
-                nome for nome in variaveis_percentuais_hgw + variaveis_capacidade_hgw
+                nome for nome in (
+                    variaveis_percentuais_hgw +
+                    variaveis_capacidade_hgw
+                )
                 if nome not in vars_hgw
             ]
 
             if faltantes_ftp or faltantes_hgw:
+
                 if faltantes_ftp:
                     st.error(
                         "O arquivo FTP não contém estas variáveis: "
                         + ", ".join(faltantes_ftp)
                     )
+
                 if faltantes_hgw:
                     st.error(
                         "O arquivo Highway não contém estas variáveis: "
                         + ", ".join(faltantes_hgw)
                     )
+
             else:
+
                 # =======================================================
                 # 1. DISTRIBUIÇÃO PERCENTUAL POR CONDIÇÃO
-                #    ITEMM vem de fpor_* e hpor_* dos arquivos MAT.
                 # =======================================================
+
                 ciclos_horizontais = [
-                    "EB HGW", "ITEMM HGW", "EB FTP", "ITEMM FTP"
+                    "ITEMM HGW",
+                    "ITEMM FTP"
                 ]
+
                 dados_horizontais = {
+
                     "Boost": [
-                        9.3,
                         obter_escalar_mat(vars_hgw, "hpor_boost"),
-                        7.4,
-                        obter_escalar_mat(vars_ftp, "fpor_boost"),
+                        obter_escalar_mat(vars_ftp, "fpor_boost")
                     ],
+
                     "Neutro": [
-                        12.6,
                         obter_escalar_mat(vars_hgw, "hpor_idle"),
-                        43.1,
-                        obter_escalar_mat(vars_ftp, "fpor_idle"),
+                        obter_escalar_mat(vars_ftp, "fpor_idle")
                     ],
+
                     "Alternador": [
-                        49.9,
                         obter_escalar_mat(vars_hgw, "hpor_alternador"),
-                        28.7,
-                        obter_escalar_mat(vars_ftp, "fpor_alternador"),
+                        obter_escalar_mat(vars_ftp, "fpor_alternador")
                     ],
+
                     "Frenagem": [
-                        28.3,
                         obter_escalar_mat(vars_hgw, "hpor_frenagem"),
-                        20.8,
-                        obter_escalar_mat(vars_ftp, "fpor_frenagem"),
-                    ],
+                        obter_escalar_mat(vars_ftp, "fpor_frenagem")
+                    ]
+
                 }
 
                 st.markdown(
                     "### 1. Proporção das Condições por Ciclo "
                     "(Barras Horizontais 100%)"
                 )
+
                 plotar_barras_horizontais_condicoes(
-                    ciclos_horizontais, dados_horizontais
+                    ciclos_horizontais,
+                    dados_horizontais
                 )
 
                 st.markdown("---")
 
                 # =======================================================
                 # 2. BALANÇO DE CARGA POR MODO
-                #    ITEMM vem das capacidades Ah calculadas no MATLAB.
                 # =======================================================
+
                 ciclos_balanco = [
-                    "ITEMM FTP", "EB FTP", "ITEMM HGW", "EB HGW"
+                    "ITEMM FTP",
+                    "ITEMM HGW"
                 ]
+
                 dados_balanco = {
-                
+
                     "Cargas Auxiliares": [
-                        obter_escalar_mat(vars_ftp, "fCapacidade_auxiliares"),
-                        ref_eb["Cargas Auxiliares"],
-                        obter_escalar_mat(vars_hgw, "hCapacidade_auxiliares"),
-                        ref_eb["Cargas Auxiliares"]
+                        obter_escalar_mat(
+                            vars_ftp,
+                            "fCapacidade_auxiliares"
+                        ),
+                        obter_escalar_mat(
+                            vars_hgw,
+                            "hCapacidade_auxiliares"
+                        )
                     ],
-                
+
                     "Boost": [
-                        obter_escalar_mat(vars_ftp, "fCapacidade_boost"),
-                        ref_eb["Boost"],
-                        obter_escalar_mat(vars_hgw, "hCapacidade_boost"),
-                        ref_eb["Boost"]
+                        obter_escalar_mat(
+                            vars_ftp,
+                            "fCapacidade_boost"
+                        ),
+                        obter_escalar_mat(
+                            vars_hgw,
+                            "hCapacidade_boost"
+                        )
                     ],
-                
+
                     "Frenagem": [
-                        obter_escalar_mat(vars_ftp, "fCapacidade_frenagem"),
-                        ref_eb["Frenagem"],
-                        obter_escalar_mat(vars_hgw, "hCapacidade_frenagem"),
-                        ref_eb["Frenagem"]
+                        obter_escalar_mat(
+                            vars_ftp,
+                            "fCapacidade_frenagem"
+                        ),
+                        obter_escalar_mat(
+                            vars_hgw,
+                            "hCapacidade_frenagem"
+                        )
                     ],
-                
+
                     "Alternador": [
-                        obter_escalar_mat(vars_ftp, "fCapacidade_alternador"),
-                        ref_eb["Alternador"],
-                        obter_escalar_mat(vars_hgw, "hCapacidade_alternador"),
-                        ref_eb["Alternador"]
+                        obter_escalar_mat(
+                            vars_ftp,
+                            "fCapacidade_alternador"
+                        ),
+                        obter_escalar_mat(
+                            vars_hgw,
+                            "hCapacidade_alternador"
+                        )
                     ]
-                
+
                 }
 
-                st.markdown("### 2. Balanço de Carga por Modo (Ah)")
-                plotar_balanco_carga_positivo_negativo(
-                    ciclos_balanco, dados_balanco
+                st.markdown(
+                    "### 2. Balanço de Carga por Modo (Ah)"
                 )
+
+                plotar_balanco_carga_positivo_negativo(
+                    ciclos_balanco,
+                    dados_balanco
+                )
+
         else:
+
             st.info(
-                "Envie os dois arquivos MAT: o arquivo com os dados FTP e o "
-                "arquivo com os dados Highway."
+                "Envie os dois arquivos MAT: o arquivo com os dados FTP "
+                "e o arquivo com os dados Highway."
             )
 
 # =======================================================================
