@@ -588,7 +588,7 @@ def main_app():
                 vars_2 = carregar_arquivo_mat(arquivo_2)
                 condicoes_2 = extrair_condicoes_automaticamente(vars_2)
                 if condicoes_2:
-                    plotar_pizza_condicoes(condicoes_2, titulo=f"Condições — {arquivo_2.name}", "grafico_pizza_arq2"))
+                    plotar_pizza_condicoes(condicoes_2, titulo=f"Condições — {arquivo_2.name}", "grafico_pizza_arq2")
                 else:
                     st.warning("Nenhuma variável de condição foi identificada no Arquivo 2.")
             else:
