@@ -480,28 +480,28 @@ def plotar_balanco_carga_positivo_negativo(categorias_ciclo, dados_balanco):
                 "type": "bar",
                 "itemStyle": {"color": COR_CARGAS_AUX, "borderColor": "#000", "borderWidth": 0.5},
                 "label": {"show": True, "position": "bottom", "fontWeight": "bold"},
-                "data": dados_balanco["Cargas Auxiliares"]
+                "data": [round(float(v), 2) for v in dados_balanco["Cargas Auxiliares"]]
             },
             {
                 "name": "Boost",
                 "type": "bar",
                 "itemStyle": {"color": COR_BOOST, "borderColor": "#000", "borderWidth": 0.5},
                 "label": {"show": True, "position": "bottom", "fontWeight": "bold"},
-                "data": dados_balanco["Boost"]
+                "data": [round(float(v), 2) for v in dados_balanco["Boost"]]
             },
             {
                 "name": "Frenagem Regenerativa",
                 "type": "bar",
                 "itemStyle": {"color": COR_REGEN, "borderColor": "#000", "borderWidth": 0.5},
                 "label": {"show": True, "position": "top", "fontWeight": "bold"},
-                "data": dados_balanco["Frenagem"]
+                "data": [round(float(v), 2) for v in dados_balanco["Frenagem"]]
             },
             {
                 "name": "Alternador",
                 "type": "bar",
                 "itemStyle": {"color": COR_ALTERNADOR, "borderColor": "#000", "borderWidth": 0.5},
                 "label": {"show": True, "position": "top", "fontWeight": "bold"},
-                "data": dados_balanco["Alternador"]
+                "data": [round(float(v), 2) for v in dados_balanco["Alternador"]]
             }
         ]
     }
