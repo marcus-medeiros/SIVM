@@ -651,61 +651,59 @@ def main_app():
     # MÓDULO 3: ANÁLISE (COMPARAÇÃO ITEMM x EB)
     # -------------------------------------------------------------------
     elif pagina_selecionada == "📉 Análise":
+    
         st.title("Análise Comparativa — ITEMM x EB")
+    
         st.markdown(
-            "Os valores ITEMM são carregados dos arquivos MAT: FTP no Arquivo FTP "
-            "e Highway no Arquivo Highway. Os valores EB permanecem como referência."
+            "Os valores ITEMM são carregados dos arquivos MAT. "
+            "As referências EB são selecionadas automaticamente "
+            "conforme o tipo de bateria."
         )
-
+    
         if arquivo_1 and arquivo_2:
-
-        vars_ftp = carregar_arquivo_mat(arquivo_1)
-        vars_hgw = carregar_arquivo_mat(arquivo_2)
     
-        try:
-            bateria_ftp, data_ftp = identificar_bateria(arquivo_1.name)
-            bateria_hgw, data_hgw = identificar_bateria(arquivo_2.name)
+            # Carregar arquivos
+            vars_ftp = carregar_arquivo_mat(arquivo_1)
+            vars_hgw = carregar_arquivo_mat(arquivo_2)
     
-            if bateria_ftp != bateria_hgw or data_ftp != data_hgw:
-                st.error(
-                    "Os arquivos FTP e Highway devem pertencer "
-                    "ao mesmo tipo de bateria e à mesma data."
+            # Identificar bateria
+            try:
+                bateria_ftp, data_ftp = identificar_bateria(arquivo_1.name)
+                bateria_hgw, data_hgw = identificar_bateria(arquivo_2.name)
+    
+                if bateria_ftp != bateria_hgw or data_ftp != data_hgw:
+                    st.error(
+                        "Os arquivos FTP e Highway devem pertencer "
+                        "à mesma bateria e à mesma data."
+                    )
+                    st.stop()
+    
+                bateria = bateria_ftp
+    
+                st.success(
+                    f"Referências EB selecionadas automaticamente: AGM {bateria}"
                 )
+    
+            except ValueError as e:
+                st.error(str(e))
                 st.stop()
     
-            bateria = bateria_ftp
-    
-            st.success(
-                f"Referências EB selecionadas automaticamente: AGM {bateria}"
-            )
-    
-        except ValueError as e:
-            st.error(str(e))
-            st.stop()
-
-            # =======================================================
-            # REFERÊNCIAS EB POR TIPO DE BATERIA
-            # Médias dos testes SINGLE_AGM L2 e SINGLE_AGM L3
-            # =======================================================
-            
+            # Referências EB
             REFERENCIAS_EB = {
-            
                 "L2": {
                     "Cargas Auxiliares": -11.98,
                     "Boost": -3.40,
                     "Frenagem": 6.83,
                     "Alternador": 8.35
                 },
-            
                 "L3": {
                     "Cargas Auxiliares": -11.77,
                     "Boost": -2.33,
                     "Frenagem": 6.00,
                     "Alternador": 7.43
                 }
-            
             }
-            
+    
             ref_eb = REFERENCIAS_EB[bateria]
 
             # Variáveis ITEMM necessárias para os dois gráficos.
