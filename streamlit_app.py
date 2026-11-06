@@ -722,7 +722,8 @@ def plotar_emissoes_e_tempos(vars_ftp, vars_hgw, nome_ftp, nome_hgw):
                     "name": "CO₂ total (g)",
                     "position": "right",
                     "nameLocation": "middle",
-                    "nameGap": 55
+                    "nameGap": 55,
+                    "splitLine": {"show": False
                 }
             ],
 
