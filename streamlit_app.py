@@ -1123,7 +1123,9 @@ def main_app():
             
             plotar_emissoes_e_tempos(
                 vars_ftp,
-                vars_hgw
+                vars_hgw,
+                arquivo_1.name,
+                arquivo_2.name
             )
 
             st.divider()
