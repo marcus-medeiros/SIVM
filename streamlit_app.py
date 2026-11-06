@@ -724,6 +724,7 @@ def plotar_emissoes_e_tempos(vars_ftp, vars_hgw, nome_ftp, nome_hgw):
                     "nameLocation": "middle",
                     "nameGap": 55,
                     "splitLine": {"show": False
+                    }
                 }
             ],
 
