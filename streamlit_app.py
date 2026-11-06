@@ -969,6 +969,67 @@ def plotar_emissoes_e_tempos(vars_ftp, vars_hgw, nome_ftp, nome_hgw):
 
 
 
+def plotar_kpis_ciclo(variaveis, prefixo, nome_ciclo):
+    """
+    Exibe distância percorrida, combustível consumido
+    e autonomia do ciclo a partir das variáveis MAT.
+    """
+
+    def obter_valor(nome_variavel):
+        valor = variaveis.get(nome_variavel)
+
+        if valor is None:
+            return None
+
+        try:
+            valor = np.asarray(valor, dtype=float).squeeze()
+
+            if valor.size == 0:
+                return None
+
+            valor = float(valor.flat[0])
+
+            return valor if np.isfinite(valor) else None
+
+        except (TypeError, ValueError):
+            return None
+
+    def formatar_br(valor):
+        if valor is None:
+            return "N/D"
+
+        return f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    # Extração dos indicadores
+    distancia = obter_valor(f"{prefixo}distancia_total_km")
+    combustivel = obter_valor(f"{prefixo}litros_totais")
+    autonomia = obter_valor(f"{prefixo}autonomia_final")
+
+    st.subheader(f"Indicadores do ciclo — {nome_ciclo}")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.metric(
+            label="Distância percorrida",
+            value=f"{formatar_br(distancia)} km"
+            if distancia is not None else "N/D"
+        )
+
+    with col2:
+        st.metric(
+            label="Combustível consumido",
+            value=f"{formatar_br(combustivel)} L"
+            if combustivel is not None else "N/D"
+        )
+
+    with col3:
+        st.metric(
+            label="Autonomia do ciclo",
+            value=f"{formatar_br(autonomia)} km/L"
+            if autonomia is not None else "N/D"
+        )
+
 
 # =======================================================================
 # 8. APLICAÇÃO PRINCIPAL
@@ -1006,6 +1067,7 @@ def main_app():
         with tab_mat1:
             if arquivo_1:
                 vars_1 = carregar_arquivo_mat(arquivo_1)
+                plotar_kpis_ciclo(vars_1, prefixo="f", nome_ciclo="ITEMM FTP")
                 chaves = [
                 var for var in VARIAVEIS_PLOTAVEIS
                 if var in vars_1
@@ -1034,6 +1096,7 @@ def main_app():
         with tab_mat2:
             if arquivo_2:
                 vars_2 = carregar_arquivo_mat(arquivo_2)
+                plotar_kpis_ciclo(vars_2, prefixo="h", nome_ciclo="ITEMM HGW")
                 chaves2 = [
                 var for var in VARIAVEIS_PLOTAVEIS
                 if var in vars_2
