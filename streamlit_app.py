@@ -463,7 +463,7 @@ def plotar_balanco_carga_positivo_negativo(categorias_ciclo, dados_balanco):
     """
     options = {
         "title": {
-            "text": "Balanço de Carga por Modo",
+            "text": "Balanço de Carga por Modo (FTP-75 e Highway)",
             "left": "center"
         },
         "tooltip": {
@@ -1228,10 +1228,7 @@ def main_app():
 
                 }
 
-                st.markdown(
-                    "### 1. Proporção das Condições por Ciclo "
-                    "(Barras Horizontais 100%)"
-                )
+                st.markdown("### 1. Proporção das Condições por Ciclo (%) ")
 
                 plotar_barras_horizontais_condicoes(
                     ciclos_horizontais,
