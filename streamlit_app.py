@@ -170,7 +170,7 @@ def identificar_bateria(nome_arquivo):
         )
 
     return match.group(1), match.group(2)
-    
+
 def obter_escalar_mat(variaveis, nome_variavel):
     """Retorna uma variável escalar de um arquivo MAT como float."""
     if nome_variavel not in variaveis:
@@ -359,7 +359,7 @@ def extrair_condicoes_automaticamente(vars_dict):
         chave_lower = chave.lower()
         if "condicao" in chave_lower or "cond" in chave_lower:
             resultado[chave] = int(np.sum(vetor > 0))
-    
+
     if not resultado:
         for chave, vetor in vars_dict.items():
             chave_lower = chave.lower()
@@ -1161,7 +1161,7 @@ def plotar_kpis_ciclo(variaveis, prefixo, nome_ciclo):
 def main_app():
     with st.sidebar:
         st.markdown("<h2 style='color: #ce4545; text-align: center;'>- SIVM -</h2>", unsafe_allow_html=True)
-        
+
         # Menu de navegação
         pagina_selecionada = st.radio(
             "Selecione o Módulo:",
@@ -1180,165 +1180,73 @@ def main_app():
             st.session_state["authenticated"] = False
             st.rerun()
 
+    # -------------------------------------------------------------------
+    # MÓDULO 1: TELEMETRIA
+    # -------------------------------------------------------------------
+    if pagina_selecionada == "📈 Telemetria":
+        st.title("Painel de Telemetria Multivariável")
 
-# -------------------------------------------------------------------
-# MÓDULO 1: TELEMETRIA
-# -------------------------------------------------------------------
-if pagina_selecionada == "📈 Telemetria":
+        tab_mat1, tab_mat2 = st.tabs(["📁 Arquivo .MAT 1", "📁 Arquivo .MAT 2"])
 
-    st.title("Painel de Telemetria Multivariável")
-
-    tab_mat1, tab_mat2 = st.tabs([
-        "📁 Arquivo .MAT 1",
-        "📁 Arquivo .MAT 2"
-    ])
-
-    # ===============================================================
-    # ABA 1 - ARQUIVO FTP
-    # ===============================================================
-    with tab_mat1:
-
-        if arquivo_1:
-
-            # Carrega o arquivo
-            vars_1 = carregar_arquivo_mat(arquivo_1)
-
-            # Exibe os KPIs
-            plotar_kpis_ciclo(
-                vars_1,
-                prefixo="f",
-                nome_ciclo="ITEMM FTP"
-            )
-
-            st.divider()
-
-            # Identifica as variáveis disponíveis para plotagem
-            chaves = [
+        with tab_mat1:
+            if arquivo_1:
+                vars_1 = carregar_arquivo_mat(arquivo_1)
+                chaves = [
                 var for var in VARIAVEIS_PLOTAVEIS
                 if var in vars_1
-            ]
-
-            if len(chaves) >= 2:
-
-                col1, col2 = st.columns(2)
-
-                var_esq = col1.selectbox(
-                    "Variável Esquerda (Área):",
-                    chaves,
-                    key="v1_left"
-                )
-
-                var_dir = col2.selectbox(
-                    "Variável Direita (Linha):",
-                    chaves,
-                    index=1,
-                    key="v1_right"
-                )
-
-                # Prepara os dados dos gráficos
-                dados_esq = [
-                    [round(i * DT_AMOSTRAGEM, 2), float(v)]
-                    for i, v in enumerate(vars_1[var_esq])
                 ]
+                if len(chaves) >= 2:
+                    col1, col2 = st.columns(2)
+                    var_esq = col1.selectbox("Variável Esquerda (Área):", chaves, key="v1_left")
+                    var_dir = col2.selectbox("Variável Direita (Linha):", chaves, index=1, key="v1_right")
 
-                dados_dir = [
-                    [round(i * DT_AMOSTRAGEM, 2), float(v)]
-                    for i, v in enumerate(vars_1[var_dir])
-                ]
+                    dados_esq = [[round(i * DT_AMOSTRAGEM, 2), float(v)] for i, v in enumerate(vars_1[var_esq])]
+                    dados_dir = [[round(i * DT_AMOSTRAGEM, 2), float(v)] for i, v in enumerate(vars_1[var_dir])]
 
-                plotar_grafico_duplo_eixo(
-                    serie_esq=dados_esq,
-                    serie_dir=dados_dir,
-                    nome_eixo_esq=var_esq,
-                    nome_eixo_dir=var_dir,
-                    titulo=f"{arquivo_1.name} — {var_esq} vs {var_dir}",
-                    key="grafico_arq1"
-                )
-
+                    plotar_grafico_duplo_eixo(
+                        serie_esq=dados_esq,
+                        serie_dir=dados_dir,
+                        nome_eixo_esq=var_esq,
+                        nome_eixo_dir=var_dir,
+                        titulo=f"{arquivo_1.name} — {var_esq} vs {var_dir}",
+                        key="grafico_arq1"
+                    )
+                else:
+                    st.warning("O arquivo precisa conter ao menos 2 variáveis numéricas.")
+                plotar_kpis_ciclo(vars_1, prefixo="f", nome_ciclo="ITEMM FTP")  
             else:
-                st.warning(
-                    "O arquivo precisa conter ao menos 2 variáveis numéricas."
-                )
+                st.info("Envie o Arquivo 1 (.mat) na barra lateral para carregar a telemetria.")
 
-        else:
-            st.info(
-                "Envie o Arquivo 1 (.mat) na barra lateral "
-                "para carregar a telemetria."
-            )
-
-    # ===============================================================
-    # ABA 2 - ARQUIVO HIGHWAY
-    # ===============================================================
-    with tab_mat2:
-
-        if arquivo_2:
-
-            # Carrega o arquivo ANTES de utilizar suas variáveis
-            vars_2 = carregar_arquivo_mat(arquivo_2)
-
-            # Exibe os KPIs
-            plotar_kpis_ciclo(
-                vars_2,
-                prefixo="h",
-                nome_ciclo="ITEMM HIGHWAY"
-            )
-
-            st.divider()
-
-            # Identifica as variáveis disponíveis para plotagem
-            chaves2 = [
+        with tab_mat2:
+            if arquivo_2:
+                
+                plotar_kpis_ciclo(vars_2, prefixo="h", nome_ciclo="ITEMM HGW")
+                vars_2 = carregar_arquivo_mat(arquivo_2)
+                chaves2 = [
                 var for var in VARIAVEIS_PLOTAVEIS
                 if var in vars_2
-            ]
-
-            if len(chaves2) >= 2:
-
-                col3, col4 = st.columns(2)
-
-                var_esq2 = col3.selectbox(
-                    "Variável Esquerda (Área):",
-                    chaves2,
-                    key="v2_left"
-                )
-
-                var_dir2 = col4.selectbox(
-                    "Variável Direita (Linha):",
-                    chaves2,
-                    index=1,
-                    key="v2_right"
-                )
-
-                # Prepara os dados dos gráficos
-                dados_esq2 = [
-                    [round(i * DT_AMOSTRAGEM, 2), float(v)]
-                    for i, v in enumerate(vars_2[var_esq2])
                 ]
+                if len(chaves2) >= 2:
+                    col3, col4 = st.columns(2)
+                    var_esq2 = col3.selectbox("Variável Esquerda (Área):", chaves2, key="v2_left")
+                    var_dir2 = col4.selectbox("Variável Direita (Linha):", chaves2, index=1, key="v2_right")
 
-                dados_dir2 = [
-                    [round(i * DT_AMOSTRAGEM, 2), float(v)]
-                    for i, v in enumerate(vars_2[var_dir2])
-                ]
+                    dados_esq2 = [[round(i * DT_AMOSTRAGEM, 2), float(v)] for i, v in enumerate(vars_2[var_esq2])]
+                    dados_dir2 = [[round(i * DT_AMOSTRAGEM, 2), float(v)] for i, v in enumerate(vars_2[var_dir2])]
 
-                plotar_grafico_duplo_eixo(
-                    serie_esq=dados_esq2,
-                    serie_dir=dados_dir2,
-                    nome_eixo_esq=var_esq2,
-                    nome_eixo_dir=var_dir2,
-                    titulo=f"{arquivo_2.name} — {var_esq2} vs {var_dir2}",
-                    key="grafico_arq2"
-                )
-
+                    plotar_grafico_duplo_eixo(
+                        serie_esq=dados_esq2,
+                        serie_dir=dados_dir2,
+                        nome_eixo_esq=var_esq2,
+                        nome_eixo_dir=var_dir2,
+                        titulo=f"{arquivo_2.name} — {var_esq2} vs {var_dir2}",
+                        key="grafico_arq2"
+                    )
+                else:
+                    st.warning("O arquivo precisa conter ao menos 2 variáveis numéricas.")
+                vars_2 = carregar_arquivo_mat(arquivo_2)
             else:
-                st.warning(
-                    "O arquivo precisa conter ao menos 2 variáveis numéricas."
-                )
-
-        else:
-            st.info(
-                "Envie o Arquivo 2 (.mat) na barra lateral "
-                "para carregar a telemetria."
-            )
-
+                st.info("Envie o Arquivo 2 (.mat) na barra lateral para carregar a telemetria.")
     # -------------------------------------------------------------------
     # MÓDULO 2: ESTATÍSTICA (PIZZAS)
     # -------------------------------------------------------------------
@@ -1392,7 +1300,7 @@ if pagina_selecionada == "📈 Telemetria":
 
             nome_ftp = arquivo_1.name
             nome_hgw = arquivo_2.name
-            
+
             titulo_arquivos = (
                 f"FTP: {nome_ftp} | HIGHWAY: {nome_hgw}"
             )
@@ -1403,7 +1311,7 @@ if pagina_selecionada == "📈 Telemetria":
             st.divider()
 
             st.markdown("### 1. Análise de Emissão de CO2 e Start-Stop")
-            
+
             plotar_emissoes_e_tempos(
                 vars_ftp,
                 vars_hgw,
