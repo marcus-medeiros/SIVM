@@ -1122,6 +1122,8 @@ def main_app():
             # EMISSÕES E TEMPOS DE START-STOP / CUT-OFF
             # ---------------------------------------------------------
             st.divider()
+
+            st.markdown("### 1. Análise de Emissão de CO2 e Start-Stop")
             
             plotar_emissoes_e_tempos(
                 vars_ftp,
@@ -1228,7 +1230,7 @@ def main_app():
 
                 }
 
-                st.markdown("### 1. Proporção das Condições por Ciclo (%) ")
+                st.markdown("### 3. Proporção das Condições por Ciclo (%) ")
 
                 plotar_barras_horizontais_condicoes(
                     ciclos_horizontais,
@@ -1295,7 +1297,7 @@ def main_app():
                 }
 
                 st.markdown(
-                    "### 2. Balanço de Carga por Modo (Ah)"
+                    "### 4. Balanço de Carga por Modo (Ah)"
                 )
 
                 plotar_balanco_carga_positivo_negativo(
