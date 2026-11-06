@@ -1191,7 +1191,6 @@ def main_app():
         with tab_mat1:
             if arquivo_1:
                 vars_1 = carregar_arquivo_mat(arquivo_1)
-                
                 chaves = [
                 var for var in VARIAVEIS_PLOTAVEIS
                 if var in vars_1
@@ -1212,9 +1211,9 @@ def main_app():
                         titulo=f"{arquivo_1.name} — {var_esq} vs {var_dir}",
                         key="grafico_arq1"
                     )
-                    plotar_kpis_ciclo(vars_1, prefixo="f", nome_ciclo="ITEMM FTP")
                 else:
                     st.warning("O arquivo precisa conter ao menos 2 variáveis numéricas.")
+                plotar_kpis_ciclo(vars_1, prefixo="f", nome_ciclo="ITEMM FTP")  
             else:
                 st.info("Envie o Arquivo 1 (.mat) na barra lateral para carregar a telemetria.")
 
