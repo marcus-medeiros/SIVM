@@ -35,12 +35,13 @@ VARIAVEIS_PLOTAVEIS = [
     "fTensaoFreio_com", 
     "fThrottle_com",
     "fPowerBattery_com",
+    "fEnergia_liquida_Wh",
     "hSpeed_com", 
     "hAceleracao_com",
     "hCorrenteBSG_com",
     "hCorrenteFiltro", 
     "hCorrenteConsumoExterno_com",
-    "hFluxoVolume_com", 
+    "hFluxoVolume_com",
     "hLoadCarga_com", 
     "hRPM_com", 
     "hSOC_calc", 
@@ -51,7 +52,8 @@ VARIAVEIS_PLOTAVEIS = [
     "hTensaoChumbo_com", 
     "hTensaoFreio_com", 
     "hThrottle_com",
-    "hPowerBattery_com"
+    "hPowerBattery_com",
+    "hEnergia_liquida_Wh"
 ]
 
 # Cores oficiais extraídas das figuras
