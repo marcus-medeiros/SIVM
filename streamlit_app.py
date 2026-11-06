@@ -994,6 +994,21 @@ def plotar_kpis_ciclo(variaveis, prefixo, nome_ciclo):
         except (TypeError, ValueError):
             return None
 
+    def obter_serie(nome_variavel):
+    bruto = variaveis.get(nome_variavel)
+
+    if bruto is None:
+        return None
+
+    try:
+        valores = np.asarray(bruto, dtype=float).ravel()
+        valores = valores[np.isfinite(valores)]
+
+        return valores if valores.size > 0 else None
+
+    except (TypeError, ValueError):
+        return None
+
     def formatar_br(valor):
         if valor is None:
             return "N/D"
@@ -1004,6 +1019,29 @@ def plotar_kpis_ciclo(variaveis, prefixo, nome_ciclo):
     distancia = obter_valor(f"{prefixo}distancia_total_km")
     combustivel = obter_valor(f"{prefixo}litros_totais")
     autonomia = obter_valor(f"{prefixo}autonomia_final")
+
+    # Capacidade da bateria
+    capacidade_bateria = obter_valor(
+        f"{prefixo}Capacidade_Ah"
+    )
+    
+    # Valores medidos de SOC
+    serie_soc = obter_serie(
+        f"{prefixo}SOC_calc"
+    )
+    
+    if serie_soc is not None:
+        soc_min = np.min(serie_soc)
+        soc_max = np.max(serie_soc)
+    
+        # Converte para porcentagem caso os valores estejam entre 0 e 1
+        if soc_min >= 0 and soc_max <= 1:
+            soc_min *= 100
+            soc_max *= 100
+    
+    else:
+        soc_min = None
+        soc_max = None
 
     st.subheader(f"Indicadores do ciclo — {nome_ciclo}")
 
@@ -1029,7 +1067,38 @@ def plotar_kpis_ciclo(variaveis, prefixo, nome_ciclo):
             value=f"{formatar_br(autonomia)} km/L"
             if autonomia is not None else "N/D"
         )
+    st.divider()
 
+    st.subheader("Capacidade da bateria e faixa de SOC")
+    
+    col4, col5, col6 = st.columns(3)
+    
+    with col4:
+        st.metric(
+            label="Capacidade da bateria",
+            value=(
+                f"{formatar_br(capacidade_bateria)} Ah"
+                if capacidade_bateria is not None else "N/D"
+            )
+        )
+    
+    with col5:
+        st.metric(
+            label="SOC mínimo medido",
+            value=(
+                f"{formatar_br(soc_min)} %"
+                if soc_min is not None else "N/D"
+            )
+        )
+    
+    with col6:
+        st.metric(
+            label="SOC máximo medido",
+            value=(
+                f"{formatar_br(soc_max)} %"
+                if soc_max is not None else "N/D"
+            )
+        )
 
 # =======================================================================
 # 8. APLICAÇÃO PRINCIPAL
