@@ -380,7 +380,7 @@ def plotar_barras_horizontais_condicoes(ciclos, dados_segmentos):
     """
     options = {
         "title": {
-            "text": "Distribuição Percentual por Condição (100% Empilhado)",
+            "text": "Distribuição Percentual por Condição (FTP-75 e Highway)",
             "left": "center"
         },
         "tooltip": {
