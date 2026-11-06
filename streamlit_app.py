@@ -1126,10 +1126,6 @@ def plotar_kpis_ciclo(variaveis, prefixo, nome_ciclo):
     # 5. SEGUNDA LINHA DE KPIs
     # =========================================================
 
-    st.divider()
-
-    st.subheader("Capacidade da bateria e faixa de SOC")
-
     col4, col5, col6 = st.columns(3)
 
     with col4:
