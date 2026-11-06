@@ -527,14 +527,15 @@ def plotar_balanco_carga_positivo_negativo(categorias_ciclo, dados_balanco):
     }
     st_echarts(options=options, height="480px")
 
-def plotar_emissoes_e_tempos(vars_ftp,vars_hgw,nome_ftp,nome_hgw):
+
+def plotar_emissoes_e_tempos(vars_ftp, vars_hgw, nome_ftp, nome_hgw):
     """
     Exibe:
     1. Emissão média, emissão de referência e CO2 total.
     2. Tempos de Start-Stop e Cut-off.
     3. Quantidade de eventos Start-Stop válidos.
 
-    Os dados são extraídos diretamente dos arquivos MAT.
+    Os nomes dos arquivos MAT são apresentados nos subtítulos.
     """
 
     ciclos = [
@@ -550,8 +551,14 @@ def plotar_emissoes_e_tempos(vars_ftp,vars_hgw,nome_ftp,nome_hgw):
         }
     ]
 
+    nomes_ciclos = [ciclo["nome"] for ciclo in ciclos]
+
+    titulo_arquivos = (
+        f"FTP: {nome_ftp} | HIGHWAY: {nome_hgw}"
+    )
+
     # ---------------------------------------------------------
-    # Extração dos valores escalares do arquivo MAT
+    # EXTRAÇÃO DOS VALORES ESCALARES
     # ---------------------------------------------------------
     def obter_valor(dados, nome):
         bruto = dados.get(nome)
@@ -572,11 +579,47 @@ def plotar_emissoes_e_tempos(vars_ftp,vars_hgw,nome_ftp,nome_hgw):
         except (TypeError, ValueError):
             return None
 
-    nomes_ciclos = [ciclo["nome"] for ciclo in ciclos]
-    titulo_arquivos = (f"FTP: {nome_ftp} | HIGHWAY: {nome_hgw}")
-    # ---------------------------------------------------------
-    # Dados de emissão
-    # ---------------------------------------------------------
+    # Arredondamento para duas casas decimais
+    def arredondar_lista(lista):
+        return [
+            round(valor, 2) if valor is not None else None
+            for valor in lista
+        ]
+
+    # Formatador JavaScript: duas casas decimais e vírgula
+    formatador_decimal = JsCode("""
+        function(params) {
+            if (params.value == null || isNaN(params.value)) {
+                return '';
+            }
+
+            return Number(params.value).toFixed(2).replace('.', ',');
+        }
+    """)
+
+    formatador_tempo = JsCode("""
+        function(params) {
+            if (params.value == null || isNaN(params.value)) {
+                return '';
+            }
+
+            return Number(params.value).toFixed(2).replace('.', ',') + ' s';
+        }
+    """)
+
+    formatador_tooltip = JsCode("""
+        function(value) {
+            if (value == null || isNaN(value)) {
+                return 'N/D';
+            }
+
+            return Number(value).toFixed(2).replace('.', ',');
+        }
+    """)
+
+    # =========================================================
+    # 1. DADOS DE EMISSÃO
+    # =========================================================
     emissao_media = []
     emissao_referencia = []
     co2_total = []
@@ -597,17 +640,23 @@ def plotar_emissoes_e_tempos(vars_ftp,vars_hgw,nome_ftp,nome_hgw):
             obter_valor(dados, f"{prefixo}co2_total_g")
         )
 
+    # Arredondamento dos dados
+    emissao_media = arredondar_lista(emissao_media)
+    emissao_referencia = arredondar_lista(emissao_referencia)
+    co2_total = arredondar_lista(co2_total)
 
     # ---------------------------------------------------------
-    # Gráfico de emissões
+    # GRÁFICO DE EMISSÕES
     # ---------------------------------------------------------
     possui_emissao = any(
         valor is not None
-        for lista in [emissao_media, emissao_referencia, co2_total]
+        for lista in [
+            emissao_media,
+            emissao_referencia,
+            co2_total
+        ]
         for valor in lista
     )
-
-    st.subheader("Emissões de CO₂")
 
     if possui_emissao:
 
@@ -615,30 +664,43 @@ def plotar_emissoes_e_tempos(vars_ftp,vars_hgw,nome_ftp,nome_hgw):
             "title": {
                 "text": "Emissões de CO₂",
                 "subtext": titulo_arquivos,
-                "left": "center"
+                "left": "center",
+                "top": "1%",
+                "textStyle": {
+                    "fontSize": 17,
+                    "fontWeight": "bold"
+                },
+                "subtextStyle": {
+                    "fontSize": 11,
+                    "color": "#757575"
+                }
             },
-            
+
             "tooltip": {
                 "trigger": "axis",
                 "axisPointer": {
                     "type": "shadow"
-                }
+                },
+                "valueFormatter": formatador_tooltip
             },
+
             "legend": {
-                "top": "5%",
+                "top": "16%",
                 "data": [
                     "Emissão média",
                     "Referência",
                     "CO₂ total"
                 ]
             },
+
             "grid": {
                 "left": "10%",
                 "right": "15%",
                 "bottom": "12%",
-                "top": "20%",
+                "top": "28%",
                 "containLabel": True
             },
+
             "xAxis": {
                 "type": "category",
                 "data": nomes_ciclos,
@@ -646,6 +708,7 @@ def plotar_emissoes_e_tempos(vars_ftp,vars_hgw,nome_ftp,nome_hgw):
                     "fontSize": 12
                 }
             },
+
             "yAxis": [
                 {
                     "type": "value",
@@ -662,6 +725,7 @@ def plotar_emissoes_e_tempos(vars_ftp,vars_hgw,nome_ftp,nome_hgw):
                     "nameGap": 55
                 }
             ],
+
             "series": [
                 {
                     "name": "Emissão média",
@@ -675,7 +739,7 @@ def plotar_emissoes_e_tempos(vars_ftp,vars_hgw,nome_ftp,nome_hgw):
                     "label": {
                         "show": True,
                         "position": "top",
-                        "formatter": "{c}"
+                        "formatter": formatador_decimal
                     }
                 },
                 {
@@ -690,7 +754,7 @@ def plotar_emissoes_e_tempos(vars_ftp,vars_hgw,nome_ftp,nome_hgw):
                     "label": {
                         "show": True,
                         "position": "top",
-                        "formatter": "{c}"
+                        "formatter": formatador_decimal
                     }
                 },
                 {
@@ -709,7 +773,8 @@ def plotar_emissoes_e_tempos(vars_ftp,vars_hgw,nome_ftp,nome_hgw):
                     },
                     "label": {
                         "show": True,
-                        "position": "top"
+                        "position": "top",
+                        "formatter": formatador_decimal
                     }
                 }
             ]
@@ -717,16 +782,18 @@ def plotar_emissoes_e_tempos(vars_ftp,vars_hgw,nome_ftp,nome_hgw):
 
         st_echarts(
             options=opcoes_emissao,
-            height="420px",
+            height="440px",
             key="grafico_emissoes_itemm"
         )
 
     else:
-        st.warning("Não foram encontrados dados de emissão nos arquivos MAT.")
+        st.warning(
+            "Não foram encontrados dados de emissão nos arquivos MAT."
+        )
 
-    # ---------------------------------------------------------
-    # Dados de Start-Stop e Cut-off
-    # ---------------------------------------------------------
+    # =========================================================
+    # 2. DADOS DE START-STOP E CUT-OFF
+    # =========================================================
     tempo_start_stop = []
     tempo_cutoff = []
     eventos_start_stop = []
@@ -747,50 +814,72 @@ def plotar_emissoes_e_tempos(vars_ftp,vars_hgw,nome_ftp,nome_hgw):
             obter_valor(dados, f"{prefixo}_ss_eventos_validos")
         )
 
+    # Arredondamento dos tempos
+    tempo_start_stop = arredondar_lista(tempo_start_stop)
+    tempo_cutoff = arredondar_lista(tempo_cutoff)
+
     # ---------------------------------------------------------
-    # Gráfico de tempos
+    # GRÁFICO DE TEMPOS
     # ---------------------------------------------------------
     possui_tempos = any(
         valor is not None
-        for lista in [tempo_start_stop, tempo_cutoff]
+        for lista in [
+            tempo_start_stop,
+            tempo_cutoff
+        ]
         for valor in lista
     )
-
-    st.subheader("Tempos de Start-Stop e Cut-off")
 
     if possui_tempos:
 
         opcoes_tempos = {
             "title": {
-                "text": "Emissões de CO₂",
+                "text": "Tempos de Start-Stop e Cut-off",
                 "subtext": titulo_arquivos,
-                "left": "center"
+                "left": "center",
+                "top": "1%",
+                "textStyle": {
+                    "fontSize": 17,
+                    "fontWeight": "bold"
+                },
+                "subtextStyle": {
+                    "fontSize": 11,
+                    "color": "#757575"
+                }
             },
+
             "tooltip": {
                 "trigger": "axis",
                 "axisPointer": {
                     "type": "shadow"
                 },
-                "valueFormatter": JsCode(
-                    "function(value) { "
-                    "return value === null ? 'N/D' : value.toFixed(2) + ' s'; "
-                    "}"
-                )
+                "valueFormatter": JsCode("""
+                    function(value) {
+                        if (value == null || isNaN(value)) {
+                            return 'N/D';
+                        }
+
+                        return Number(value).toFixed(2).replace('.', ',') + ' s';
+                    }
+                """)
             },
+
             "legend": {
-                "top": "5%",
+                "top": "16%",
                 "data": [
                     "Start-Stop",
                     "Cut-off"
                 ]
             },
+
             "grid": {
                 "left": "10%",
                 "right": "5%",
                 "bottom": "12%",
-                "top": "20%",
+                "top": "28%",
                 "containLabel": True
             },
+
             "xAxis": {
                 "type": "category",
                 "data": nomes_ciclos,
@@ -798,12 +887,14 @@ def plotar_emissoes_e_tempos(vars_ftp,vars_hgw,nome_ftp,nome_hgw):
                     "fontSize": 12
                 }
             },
+
             "yAxis": {
                 "type": "value",
                 "name": "Tempo (s)",
                 "nameLocation": "middle",
                 "nameGap": 45
             },
+
             "series": [
                 {
                     "name": "Start-Stop",
@@ -816,7 +907,7 @@ def plotar_emissoes_e_tempos(vars_ftp,vars_hgw,nome_ftp,nome_hgw):
                     "label": {
                         "show": True,
                         "position": "top",
-                        "formatter": "{c} s"
+                        "formatter": formatador_tempo
                     }
                 },
                 {
@@ -830,7 +921,7 @@ def plotar_emissoes_e_tempos(vars_ftp,vars_hgw,nome_ftp,nome_hgw):
                     "label": {
                         "show": True,
                         "position": "top",
-                        "formatter": "{c} s"
+                        "formatter": formatador_tempo
                     }
                 }
             ]
@@ -838,16 +929,18 @@ def plotar_emissoes_e_tempos(vars_ftp,vars_hgw,nome_ftp,nome_hgw):
 
         st_echarts(
             options=opcoes_tempos,
-            height="380px",
+            height="420px",
             key="grafico_tempos_start_stop_cutoff"
         )
 
     else:
-        st.warning("Não foram encontrados dados de tempo de Start-Stop ou Cut-off.")
+        st.warning(
+            "Não foram encontrados dados de tempo de Start-Stop ou Cut-off."
+        )
 
-    # ---------------------------------------------------------
-    # Quantidade de eventos Start-Stop válidos
-    # ---------------------------------------------------------
+    # =========================================================
+    # 3. QUANTIDADE DE EVENTOS START-STOP
+    # =========================================================
     st.subheader("Eventos de Start-Stop")
 
     col1, col2 = st.columns(2)
@@ -857,17 +950,21 @@ def plotar_emissoes_e_tempos(vars_ftp,vars_hgw,nome_ftp,nome_hgw):
         nomes_ciclos,
         eventos_start_stop
     ):
+
         with coluna:
-            valor_exibido = (
-                f"{quantidade:,.0f}".replace(",", ".")
-                if quantidade is not None
-                else "N/D"
-            )
+
+            if quantidade is not None:
+                valor_exibido = (
+                    f"{quantidade:,.0f}".replace(",", ".")
+                )
+            else:
+                valor_exibido = "N/D"
 
             st.metric(
                 label=f"Eventos válidos — {nome_ciclo}",
                 value=valor_exibido
             )
+
 
 
 
