@@ -969,79 +969,127 @@ def plotar_emissoes_e_tempos(vars_ftp, vars_hgw, nome_ftp, nome_hgw):
 
 
 
+
 def plotar_kpis_ciclo(variaveis, prefixo, nome_ciclo):
     """
-    Exibe distância percorrida, combustível consumido
-    e autonomia do ciclo a partir das variáveis MAT.
+    Exibe seis KPIs do ciclo:
+
+    Primeira linha:
+        - Distância percorrida (km)
+        - Combustível consumido (L)
+        - Autonomia do ciclo (km/L)
+
+    Segunda linha:
+        - Capacidade da bateria (Ah)
+        - SOC mínimo medido (%)
+        - SOC máximo medido (%)
     """
 
+    # ---------------------------------------------------------
+    # FUNÇÃO PARA EXTRAIR VALORES ESCALARES
+    # ---------------------------------------------------------
     def obter_valor(nome_variavel):
-        valor = variaveis.get(nome_variavel)
+        bruto = variaveis.get(nome_variavel)
 
-        if valor is None:
+        if bruto is None:
             return None
 
         try:
-            valor = np.asarray(valor, dtype=float).squeeze()
+            valores = np.asarray(bruto, dtype=float).ravel()
+            valores = valores[np.isfinite(valores)]
 
-            if valor.size == 0:
+            if valores.size == 0:
                 return None
 
-            valor = float(valor.flat[0])
-
-            return valor if np.isfinite(valor) else None
+            return float(valores[0])
 
         except (TypeError, ValueError):
             return None
 
+    # ---------------------------------------------------------
+    # FUNÇÃO PARA EXTRAIR SÉRIES TEMPORAIS
+    # ---------------------------------------------------------
     def obter_serie(nome_variavel):
-    bruto = variaveis.get(nome_variavel)
+        bruto = variaveis.get(nome_variavel)
 
-    if bruto is None:
-        return None
+        if bruto is None:
+            return None
 
-    try:
-        valores = np.asarray(bruto, dtype=float).ravel()
-        valores = valores[np.isfinite(valores)]
+        try:
+            valores = np.asarray(bruto, dtype=float).ravel()
+            valores = valores[np.isfinite(valores)]
 
-        return valores if valores.size > 0 else None
+            if valores.size == 0:
+                return None
 
-    except (TypeError, ValueError):
-        return None
+            return valores
 
+        except (TypeError, ValueError):
+            return None
+
+    # ---------------------------------------------------------
+    # FORMATAÇÃO NUMÉRICA BRASILEIRA
+    # ---------------------------------------------------------
     def formatar_br(valor):
         if valor is None:
             return "N/D"
 
-        return f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        return (
+            f"{valor:,.2f}"
+            .replace(",", "X")
+            .replace(".", ",")
+            .replace("X", ".")
+        )
 
-    # Extração dos indicadores
-    distancia = obter_valor(f"{prefixo}distancia_total_km")
-    combustivel = obter_valor(f"{prefixo}litros_totais")
-    autonomia = obter_valor(f"{prefixo}autonomia_final")
+    # =========================================================
+    # 1. EXTRAÇÃO DOS INDICADORES DO CICLO
+    # =========================================================
 
-    # Capacidade da bateria
+    distancia = obter_valor(
+        f"{prefixo}distancia_total_km"
+    )
+
+    combustivel = obter_valor(
+        f"{prefixo}litros_totais"
+    )
+
+    autonomia = obter_valor(
+        f"{prefixo}autonomia_final"
+    )
+
+    # =========================================================
+    # 2. CAPACIDADE DA BATERIA
+    # =========================================================
+
     capacidade_bateria = obter_valor(
         f"{prefixo}Capacidade_Ah"
     )
-    
-    # Valores medidos de SOC
+
+    # =========================================================
+    # 3. SOC MÍNIMO E MÁXIMO MEDIDOS
+    # =========================================================
+
     serie_soc = obter_serie(
         f"{prefixo}SOC_calc"
     )
-    
+
     if serie_soc is not None:
-        soc_min = np.min(serie_soc)
-        soc_max = np.max(serie_soc)
-    
-        # Converte para porcentagem caso os valores estejam entre 0 e 1
+
+        soc_min = float(np.min(serie_soc))
+        soc_max = float(np.max(serie_soc))
+
+        # Verifica se o SOC está normalizado entre 0 e 1
         if soc_min >= 0 and soc_max <= 1:
             soc_min *= 100
             soc_max *= 100
-    
+
     else:
         soc_min = None
         soc_max = None
+
+    # =========================================================
+    # 4. PRIMEIRA LINHA DE KPIs
+    # =========================================================
 
     st.subheader(f"Indicadores do ciclo — {nome_ciclo}")
 
@@ -1050,29 +1098,40 @@ def plotar_kpis_ciclo(variaveis, prefixo, nome_ciclo):
     with col1:
         st.metric(
             label="Distância percorrida",
-            value=f"{formatar_br(distancia)} km"
-            if distancia is not None else "N/D"
+            value=(
+                f"{formatar_br(distancia)} km"
+                if distancia is not None else "N/D"
+            )
         )
 
     with col2:
         st.metric(
             label="Combustível consumido",
-            value=f"{formatar_br(combustivel)} L"
-            if combustivel is not None else "N/D"
+            value=(
+                f"{formatar_br(combustivel)} L"
+                if combustivel is not None else "N/D"
+            )
         )
 
     with col3:
         st.metric(
             label="Autonomia do ciclo",
-            value=f"{formatar_br(autonomia)} km/L"
-            if autonomia is not None else "N/D"
+            value=(
+                f"{formatar_br(autonomia)} km/L"
+                if autonomia is not None else "N/D"
+            )
         )
+
+    # =========================================================
+    # 5. SEGUNDA LINHA DE KPIs
+    # =========================================================
+
     st.divider()
 
     st.subheader("Capacidade da bateria e faixa de SOC")
-    
+
     col4, col5, col6 = st.columns(3)
-    
+
     with col4:
         st.metric(
             label="Capacidade da bateria",
@@ -1081,7 +1140,7 @@ def plotar_kpis_ciclo(variaveis, prefixo, nome_ciclo):
                 if capacidade_bateria is not None else "N/D"
             )
         )
-    
+
     with col5:
         st.metric(
             label="SOC mínimo medido",
@@ -1090,7 +1149,7 @@ def plotar_kpis_ciclo(variaveis, prefixo, nome_ciclo):
                 if soc_min is not None else "N/D"
             )
         )
-    
+
     with col6:
         st.metric(
             label="SOC máximo medido",
