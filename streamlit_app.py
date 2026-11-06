@@ -1241,9 +1241,9 @@ def main_app():
                         titulo=f"{arquivo_2.name} — {var_esq2} vs {var_dir2}",
                         key="grafico_arq2"
                     )
-                    vars_2 = carregar_arquivo_mat(arquivo_2)
                 else:
                     st.warning("O arquivo precisa conter ao menos 2 variáveis numéricas.")
+                vars_2 = carregar_arquivo_mat(arquivo_2)
             else:
                 st.info("Envie o Arquivo 2 (.mat) na barra lateral para carregar a telemetria.")
     # -------------------------------------------------------------------
@@ -1278,10 +1278,8 @@ def main_app():
                     st.warning("Nenhuma variável de condição foi identificada no Arquivo 2.")
             else:
                 st.info("Faça o upload do Arquivo 2 na barra lateral.")
+
     # -------------------------------------------------------------------
-    # MÓDULO 3: ANÁLISE (COMPARAÇÃO ITEMM)
-    # -------------------------------------------------------------------
-        # -------------------------------------------------------------------
     # MÓDULO 3: ANÁLISE ITEMM
     # -------------------------------------------------------------------
     elif pagina_selecionada == "📉 Análise":
