@@ -527,7 +527,7 @@ def plotar_balanco_carga_positivo_negativo(categorias_ciclo, dados_balanco):
     }
     st_echarts(options=options, height="480px")
 
-def plotar_emissoes_e_tempos(vars_ftp, vars_hgw):
+def plotar_emissoes_e_tempos(vars_ftp,vars_hgw,nome_ftp,nome_hgw):
     """
     Exibe:
     1. Emissão média, emissão de referência e CO2 total.
@@ -573,7 +573,7 @@ def plotar_emissoes_e_tempos(vars_ftp, vars_hgw):
             return None
 
     nomes_ciclos = [ciclo["nome"] for ciclo in ciclos]
-
+    titulo_arquivos = (f"FTP: {nome_ftp} | HIGHWAY: {nome_hgw}")
     # ---------------------------------------------------------
     # Dados de emissão
     # ---------------------------------------------------------
@@ -612,6 +612,12 @@ def plotar_emissoes_e_tempos(vars_ftp, vars_hgw):
     if possui_emissao:
 
         opcoes_emissao = {
+            "title": {
+                "text": "Emissões de CO₂",
+                "subtext": titulo_arquivos,
+                "left": "center"
+            },
+            
             "tooltip": {
                 "trigger": "axis",
                 "axisPointer": {
@@ -755,6 +761,11 @@ def plotar_emissoes_e_tempos(vars_ftp, vars_hgw):
     if possui_tempos:
 
         opcoes_tempos = {
+            "title": {
+                "text": "Emissões de CO₂",
+                "subtext": titulo_arquivos,
+                "left": "center"
+            },
             "tooltip": {
                 "trigger": "axis",
                 "axisPointer": {
@@ -1001,6 +1012,13 @@ def main_app():
             vars_ftp = carregar_arquivo_mat(arquivo_1)
             vars_hgw = carregar_arquivo_mat(arquivo_2)
 
+            nome_ftp = arquivo_1.name
+            nome_hgw = arquivo_2.name
+            
+            titulo_arquivos = (
+                f"FTP: {nome_ftp} | HIGHWAY: {nome_hgw}"
+            )
+
             # ---------------------------------------------------------
             # EMISSÕES E TEMPOS DE START-STOP / CUT-OFF
             # ---------------------------------------------------------
@@ -1012,7 +1030,6 @@ def main_app():
             )
 
             st.divider()
-
 
             # Variáveis de distribuição percentual
             variaveis_percentuais_ftp = [
