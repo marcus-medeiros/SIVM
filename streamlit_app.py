@@ -527,6 +527,338 @@ def plotar_balanco_carga_positivo_negativo(categorias_ciclo, dados_balanco):
     }
     st_echarts(options=options, height="480px")
 
+def plotar_emissoes_e_tempos(vars_ftp, vars_hgw):
+    """
+    Exibe:
+    1. Emissão média, emissão de referência e CO2 total.
+    2. Tempos de Start-Stop e Cut-off.
+    3. Quantidade de eventos Start-Stop válidos.
+
+    Os dados são extraídos diretamente dos arquivos MAT.
+    """
+
+    ciclos = [
+        {
+            "nome": "ITEMM FTP",
+            "dados": vars_ftp or {},
+            "prefixo": "f"
+        },
+        {
+            "nome": "ITEMM HGW",
+            "dados": vars_hgw or {},
+            "prefixo": "h"
+        }
+    ]
+
+    # ---------------------------------------------------------
+    # Extração dos valores escalares do arquivo MAT
+    # ---------------------------------------------------------
+    def obter_valor(dados, nome):
+        bruto = dados.get(nome)
+
+        if bruto is None:
+            return None
+
+        try:
+            valores = np.asarray(bruto, dtype=float).squeeze()
+
+            if valores.size == 0:
+                return None
+
+            valor = float(valores.flat[0])
+
+            return valor if np.isfinite(valor) else None
+
+        except (TypeError, ValueError):
+            return None
+
+    nomes_ciclos = [ciclo["nome"] for ciclo in ciclos]
+
+    # ---------------------------------------------------------
+    # Dados de emissão
+    # ---------------------------------------------------------
+    emissao_media = []
+    emissao_referencia = []
+    co2_total = []
+
+    for ciclo in ciclos:
+        dados = ciclo["dados"]
+        prefixo = ciclo["prefixo"]
+
+        emissao_media.append(
+            obter_valor(dados, f"{prefixo}emissao_media_g_km")
+        )
+
+        emissao_referencia.append(
+            obter_valor(dados, f"{prefixo}emissao_ref")
+        )
+
+        co2_total.append(
+            obter_valor(dados, f"{prefixo}co2_total_g")
+        )
+
+    # ---------------------------------------------------------
+    # Gráfico de emissões
+    # ---------------------------------------------------------
+    possui_emissao = any(
+        valor is not None
+        for lista in [emissao_media, emissao_referencia, co2_total]
+        for valor in lista
+    )
+
+    st.subheader("Emissões de CO₂")
+
+    if possui_emissao:
+
+        opcoes_emissao = {
+            "tooltip": {
+                "trigger": "axis",
+                "axisPointer": {
+                    "type": "shadow"
+                }
+            },
+            "legend": {
+                "top": "5%",
+                "data": [
+                    "Emissão média",
+                    "Referência",
+                    "CO₂ total"
+                ]
+            },
+            "grid": {
+                "left": "10%",
+                "right": "15%",
+                "bottom": "12%",
+                "top": "20%",
+                "containLabel": True
+            },
+            "xAxis": {
+                "type": "category",
+                "data": nomes_ciclos,
+                "axisLabel": {
+                    "fontSize": 12
+                }
+            },
+            "yAxis": [
+                {
+                    "type": "value",
+                    "name": "Emissão (g/km)",
+                    "position": "left",
+                    "nameLocation": "middle",
+                    "nameGap": 45
+                },
+                {
+                    "type": "value",
+                    "name": "CO₂ total (g)",
+                    "position": "right",
+                    "nameLocation": "middle",
+                    "nameGap": 55
+                }
+            ],
+            "series": [
+                {
+                    "name": "Emissão média",
+                    "type": "bar",
+                    "yAxisIndex": 0,
+                    "data": emissao_media,
+                    "barMaxWidth": 45,
+                    "itemStyle": {
+                        "color": "#702082"
+                    },
+                    "label": {
+                        "show": True,
+                        "position": "top",
+                        "formatter": "{c}"
+                    }
+                },
+                {
+                    "name": "Referência",
+                    "type": "bar",
+                    "yAxisIndex": 0,
+                    "data": emissao_referencia,
+                    "barMaxWidth": 45,
+                    "itemStyle": {
+                        "color": "#9e9e9e"
+                    },
+                    "label": {
+                        "show": True,
+                        "position": "top",
+                        "formatter": "{c}"
+                    }
+                },
+                {
+                    "name": "CO₂ total",
+                    "type": "line",
+                    "yAxisIndex": 1,
+                    "data": co2_total,
+                    "symbol": "circle",
+                    "symbolSize": 10,
+                    "lineStyle": {
+                        "width": 3,
+                        "color": "#008848"
+                    },
+                    "itemStyle": {
+                        "color": "#008848"
+                    },
+                    "label": {
+                        "show": True,
+                        "position": "top"
+                    }
+                }
+            ]
+        }
+
+        st_echarts(
+            options=opcoes_emissao,
+            height="420px",
+            key="grafico_emissoes_itemm"
+        )
+
+    else:
+        st.warning("Não foram encontrados dados de emissão nos arquivos MAT.")
+
+    # ---------------------------------------------------------
+    # Dados de Start-Stop e Cut-off
+    # ---------------------------------------------------------
+    tempo_start_stop = []
+    tempo_cutoff = []
+    eventos_start_stop = []
+
+    for ciclo in ciclos:
+        dados = ciclo["dados"]
+        prefixo = ciclo["prefixo"]
+
+        tempo_start_stop.append(
+            obter_valor(dados, f"{prefixo}s_start_stop")
+        )
+
+        tempo_cutoff.append(
+            obter_valor(dados, f"{prefixo}s_cut")
+        )
+
+        eventos_start_stop.append(
+            obter_valor(dados, f"{prefixo}_ss_eventos_validos")
+        )
+
+    # ---------------------------------------------------------
+    # Gráfico de tempos
+    # ---------------------------------------------------------
+    possui_tempos = any(
+        valor is not None
+        for lista in [tempo_start_stop, tempo_cutoff]
+        for valor in lista
+    )
+
+    st.subheader("Tempos de Start-Stop e Cut-off")
+
+    if possui_tempos:
+
+        opcoes_tempos = {
+            "tooltip": {
+                "trigger": "axis",
+                "axisPointer": {
+                    "type": "shadow"
+                },
+                "valueFormatter": JsCode(
+                    "function(value) { "
+                    "return value === null ? 'N/D' : value.toFixed(2) + ' s'; "
+                    "}"
+                )
+            },
+            "legend": {
+                "top": "5%",
+                "data": [
+                    "Start-Stop",
+                    "Cut-off"
+                ]
+            },
+            "grid": {
+                "left": "10%",
+                "right": "5%",
+                "bottom": "12%",
+                "top": "20%",
+                "containLabel": True
+            },
+            "xAxis": {
+                "type": "category",
+                "data": nomes_ciclos,
+                "axisLabel": {
+                    "fontSize": 12
+                }
+            },
+            "yAxis": {
+                "type": "value",
+                "name": "Tempo (s)",
+                "nameLocation": "middle",
+                "nameGap": 45
+            },
+            "series": [
+                {
+                    "name": "Start-Stop",
+                    "type": "bar",
+                    "data": tempo_start_stop,
+                    "barMaxWidth": 50,
+                    "itemStyle": {
+                        "color": "#f39200"
+                    },
+                    "label": {
+                        "show": True,
+                        "position": "top",
+                        "formatter": "{c} s"
+                    }
+                },
+                {
+                    "name": "Cut-off",
+                    "type": "bar",
+                    "data": tempo_cutoff,
+                    "barMaxWidth": 50,
+                    "itemStyle": {
+                        "color": "#008848"
+                    },
+                    "label": {
+                        "show": True,
+                        "position": "top",
+                        "formatter": "{c} s"
+                    }
+                }
+            ]
+        }
+
+        st_echarts(
+            options=opcoes_tempos,
+            height="380px",
+            key="grafico_tempos_start_stop_cutoff"
+        )
+
+    else:
+        st.warning("Não foram encontrados dados de tempo de Start-Stop ou Cut-off.")
+
+    # ---------------------------------------------------------
+    # Quantidade de eventos Start-Stop válidos
+    # ---------------------------------------------------------
+    st.subheader("Eventos de Start-Stop")
+
+    col1, col2 = st.columns(2)
+
+    for coluna, nome_ciclo, quantidade in zip(
+        [col1, col2],
+        nomes_ciclos,
+        eventos_start_stop
+    ):
+        with coluna:
+            valor_exibido = (
+                f"{quantidade:,.0f}".replace(",", ".")
+                if quantidade is not None
+                else "N/D"
+            )
+
+            st.metric(
+                label=f"Eventos válidos — {nome_ciclo}",
+                value=valor_exibido
+            )
+
+
+
 # =======================================================================
 # 8. APLICAÇÃO PRINCIPAL
 # =======================================================================
@@ -667,6 +999,19 @@ def main_app():
             # Carregar arquivos MAT
             vars_ftp = carregar_arquivo_mat(arquivo_1)
             vars_hgw = carregar_arquivo_mat(arquivo_2)
+
+            # ---------------------------------------------------------
+            # EMISSÕES E TEMPOS DE START-STOP / CUT-OFF
+            # ---------------------------------------------------------
+            st.divider()
+            
+            plotar_emissoes_e_tempos(
+                vars_ftp,
+                vars_hgw
+            )
+
+            st.divider()
+
 
             # Variáveis de distribuição percentual
             variaveis_percentuais_ftp = [
