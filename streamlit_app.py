@@ -597,6 +597,7 @@ def plotar_emissoes_e_tempos(vars_ftp, vars_hgw):
             obter_valor(dados, f"{prefixo}co2_total_g")
         )
 
+
     # ---------------------------------------------------------
     # Gráfico de emissões
     # ---------------------------------------------------------
