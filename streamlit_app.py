@@ -1191,7 +1191,7 @@ def main_app():
         with tab_mat1:
             if arquivo_1:
                 vars_1 = carregar_arquivo_mat(arquivo_1)
-                plotar_kpis_ciclo(vars_1, prefixo="f", nome_ciclo="ITEMM FTP")
+                
                 chaves = [
                 var for var in VARIAVEIS_PLOTAVEIS
                 if var in vars_1
@@ -1212,6 +1212,7 @@ def main_app():
                         titulo=f"{arquivo_1.name} — {var_esq} vs {var_dir}",
                         key="grafico_arq1"
                     )
+                    plotar_kpis_ciclo(vars_1, prefixo="f", nome_ciclo="ITEMM FTP")
                 else:
                     st.warning("O arquivo precisa conter ao menos 2 variáveis numéricas.")
             else:
@@ -1219,7 +1220,7 @@ def main_app():
 
         with tab_mat2:
             if arquivo_2:
-                vars_2 = carregar_arquivo_mat(arquivo_2)
+                
                 plotar_kpis_ciclo(vars_2, prefixo="h", nome_ciclo="ITEMM HGW")
                 chaves2 = [
                 var for var in VARIAVEIS_PLOTAVEIS
@@ -1241,6 +1242,7 @@ def main_app():
                         titulo=f"{arquivo_2.name} — {var_esq2} vs {var_dir2}",
                         key="grafico_arq2"
                     )
+                    vars_2 = carregar_arquivo_mat(arquivo_2)
                 else:
                     st.warning("O arquivo precisa conter ao menos 2 variáveis numéricas.")
             else:
