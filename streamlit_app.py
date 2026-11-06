@@ -1219,8 +1219,7 @@ def main_app():
 
         with tab_mat2:
             if arquivo_2:
-                
-                plotar_kpis_ciclo(vars_2, prefixo="h", nome_ciclo="ITEMM HGW")
+                vars_2 = carregar_arquivo_mat(arquivo_2)
                 chaves2 = [
                 var for var in VARIAVEIS_PLOTAVEIS
                 if var in vars_2
