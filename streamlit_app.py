@@ -1159,6 +1159,722 @@ def plotar_kpis_ciclo(variaveis, prefixo, nome_ciclo):
             )
         )
 
+
+def renderizar_analise_estatistica(arquivo_1, arquivo_2):
+    """
+    Módulo de análise estatística operacional.
+
+    Permite:
+    - Selecionar FTP ou Highway.
+    - Selecionar condição operacional.
+    - Selecionar variável de interesse.
+    - Calcular estatísticas descritivas e percentis.
+    - Plotar histograma e curva normal de referência.
+    - Plotar heatmaps de densidade operacional.
+    """
+
+    # =========================================================
+    # 1. FUNÇÕES AUXILIARES
+    # =========================================================
+
+    def obter_serie(dados, nome):
+        bruto = dados.get(nome)
+
+        if bruto is None:
+            return None
+
+        try:
+            valores = np.asarray(bruto, dtype=float).ravel()
+
+            if valores.size == 0:
+                return None
+
+            return valores
+
+        except (TypeError, ValueError):
+            return None
+
+    def formatar_numero(valor, casas=2):
+        if valor is None or not np.isfinite(valor):
+            return "N/D"
+
+        return (
+            f"{valor:,.{casas}f}"
+            .replace(",", "X")
+            .replace(".", ",")
+            .replace("X", ".")
+        )
+
+    def nome_amigavel(nome, prefixo):
+        sufixo = nome[len(prefixo):]
+
+        nomes = {
+            "Speed_com": "Velocidade (km/h)",
+            "Aceleracao_com": "Aceleração (m/s²)",
+            "CorrenteBSG_com": "Corrente BSG (A)",
+            "CorrenteFiltro": "Corrente da bateria (A)",
+            "CorrenteConsumoExterno_com": "Corrente cargas externas (A)",
+            "FluxoVolume_com": "Fluxo volumétrico",
+            "FluxoMassa": "Fluxo de massa",
+            "LoadCarga_com": "Carga do motor (%)",
+            "RPM_com": "Rotação do motor (RPM)",
+            "SOC_calc": "SOC (%)",
+            "TempBattery_com": "Temperatura da bateria (°C)",
+            "TempCatalisador_com": "Temperatura do catalisador (°C)",
+            "TensaoAC1_norm": "Tensão AC1",
+            "TensaoBSG_com": "Tensão BSG (V)",
+            "TensaoChumbo_com": "Tensão da bateria (V)",
+            "TensaoFreio_com": "Tensão do freio",
+            "Throttle_com": "Pedal do acelerador (%)",
+            "PowerBattery_com": "Potência da bateria (W)",
+            "PowerBSG_com": "Potência BSG (W)"
+        }
+
+        return nomes.get(
+            sufixo,
+            sufixo.replace("_", " ").title()
+        )
+
+    def listar_variaveis(dados, prefixo):
+        variaveis = []
+
+        for nome, valor in dados.items():
+
+            if not nome.startswith(prefixo):
+                continue
+
+            # Condições operacionais não são variáveis de interesse
+            if nome.startswith(f"{prefixo}condicao"):
+                continue
+
+            try:
+                serie = np.asarray(valor, dtype=float).ravel()
+
+                if serie.size > 1 and np.isfinite(serie).any():
+                    variaveis.append(nome)
+
+            except (TypeError, ValueError):
+                continue
+
+        return sorted(
+            variaveis,
+            key=lambda x: nome_amigavel(x, prefixo).lower()
+        )
+
+    def extrair_serie_condicionada(
+        dados,
+        nome_variavel,
+        nome_condicao=None
+    ):
+        serie = obter_serie(dados, nome_variavel)
+
+        if serie is None:
+            return np.array([])
+
+        # Todas as amostras
+        if nome_condicao is None:
+            return serie[np.isfinite(serie)]
+
+        condicao = obter_serie(dados, nome_condicao)
+
+        if condicao is None:
+            return np.array([])
+
+        n = min(len(serie), len(condicao))
+
+        serie = serie[:n]
+        condicao = condicao[:n]
+
+        mascara = (
+            np.isfinite(serie)
+            & np.isfinite(condicao)
+            & (condicao != 0)
+        )
+
+        return serie[mascara]
+
+    def extrair_par_condicionado(
+        dados,
+        nome_x,
+        nome_y,
+        nome_condicao=None
+    ):
+        serie_x = obter_serie(dados, nome_x)
+        serie_y = obter_serie(dados, nome_y)
+
+        if serie_x is None or serie_y is None:
+            return np.array([]), np.array([])
+
+        if nome_condicao is None:
+            n = min(len(serie_x), len(serie_y))
+
+            x = serie_x[:n]
+            y = serie_y[:n]
+
+            mascara = np.isfinite(x) & np.isfinite(y)
+
+        else:
+            condicao = obter_serie(dados, nome_condicao)
+
+            if condicao is None:
+                return np.array([]), np.array([])
+
+            n = min(
+                len(serie_x),
+                len(serie_y),
+                len(condicao)
+            )
+
+            x = serie_x[:n]
+            y = serie_y[:n]
+            condicao = condicao[:n]
+
+            mascara = (
+                np.isfinite(x)
+                & np.isfinite(y)
+                & np.isfinite(condicao)
+                & (condicao != 0)
+            )
+
+        return x[mascara], y[mascara]
+
+    # =========================================================
+    # 2. CARREGAMENTO DOS ARQUIVOS
+    # =========================================================
+
+    ciclos = []
+
+    if arquivo_1:
+        dados_ftp = carregar_arquivo_mat(arquivo_1)
+
+        if dados_ftp:
+            ciclos.append({
+                "nome": f"FTP — {arquivo_1.name}",
+                "dados": dados_ftp,
+                "prefixo": "f"
+            })
+
+    if arquivo_2:
+        dados_hgw = carregar_arquivo_mat(arquivo_2)
+
+        if dados_hgw:
+            ciclos.append({
+                "nome": f"Highway — {arquivo_2.name}",
+                "dados": dados_hgw,
+                "prefixo": "h"
+            })
+
+    if not ciclos:
+        st.info(
+            "Envie pelo menos um arquivo .mat na barra lateral "
+            "para iniciar a análise estatística."
+        )
+        return
+
+    st.title("Análise Estatística das Condições Operacionais")
+
+    # =========================================================
+    # 3. SELEÇÃO DO CICLO
+    # =========================================================
+
+    nomes_ciclos = [
+        ciclo["nome"] for ciclo in ciclos
+    ]
+
+    ciclo_selecionado = st.selectbox(
+        "Ciclo de condução:",
+        nomes_ciclos,
+        key="estat_ciclo"
+    )
+
+    ciclo = next(
+        c for c in ciclos
+        if c["nome"] == ciclo_selecionado
+    )
+
+    dados = ciclo["dados"]
+    prefixo = ciclo["prefixo"]
+
+    # =========================================================
+    # 4. SELEÇÃO DA CONDIÇÃO OPERACIONAL
+    # =========================================================
+
+    condicoes = {
+        "Todas as amostras": None,
+        "Alternador": f"{prefixo}condicao_alt",
+        "Boost": f"{prefixo}condicao_boo",
+        "Frenagem regenerativa": f"{prefixo}condicao_fre",
+        "Neutro": f"{prefixo}condicao_neu"
+    }
+
+    condicoes_disponiveis = {
+        nome: chave
+        for nome, chave in condicoes.items()
+        if chave is None or chave in dados
+    }
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        condicao_selecionada = st.selectbox(
+            "Condição operacional:",
+            list(condicoes_disponiveis.keys()),
+            key=f"estat_condicao_{prefixo}"
+        )
+
+    nome_condicao = condicoes_disponiveis[
+        condicao_selecionada
+    ]
+
+    with col2:
+
+        # =====================================================
+        # 5. SELEÇÃO DA VARIÁVEL
+        # =====================================================
+
+        variaveis_disponiveis = listar_variaveis(
+            dados,
+            prefixo
+        )
+
+        if not variaveis_disponiveis:
+            st.warning(
+                "Não foram encontradas séries temporais numéricas "
+                "para análise neste arquivo."
+            )
+            return
+
+        variavel_selecionada = st.selectbox(
+            "Variável analisada:",
+            variaveis_disponiveis,
+            format_func=lambda nome: nome_amigavel(nome, prefixo),
+            key=f"estat_variavel_{prefixo}"
+        )
+
+    nome_variavel = nome_amigavel(
+        variavel_selecionada,
+        prefixo
+    )
+
+    # =========================================================
+    # 6. FILTRAGEM DOS DADOS
+    # =========================================================
+
+    valores = extrair_serie_condicionada(
+        dados,
+        variavel_selecionada,
+        nome_condicao
+    )
+
+    st.divider()
+
+    st.markdown(
+        f"**Ciclo:** {ciclo['nome']}  \n"
+        f"**Condição:** {condicao_selecionada}  \n"
+        f"**Variável:** {nome_variavel}"
+    )
+
+    if len(valores) < 2:
+        st.warning(
+            "Não existem amostras suficientes para realizar "
+            "a análise nesta condição."
+        )
+        return
+
+    # =========================================================
+    # 7. INDICADORES ESTATÍSTICOS
+    # =========================================================
+
+    media = float(np.mean(valores))
+    mediana = float(np.median(valores))
+    desvio = float(np.std(valores, ddof=1))
+
+    minimo = float(np.min(valores))
+    maximo = float(np.max(valores))
+
+    percentis = np.percentile(
+        valores,
+        [10, 25, 50, 75, 90]
+    )
+
+    coef_variacao = (
+        (desvio / abs(media)) * 100
+        if abs(media) > 1e-12
+        else None
+    )
+
+    st.subheader("Indicadores estatísticos")
+
+    colunas = st.columns(4)
+
+    indicadores = [
+        ("Amostras válidas", f"{len(valores):,}".replace(",", ".")),
+        ("Média", formatar_numero(media)),
+        ("Mediana", formatar_numero(mediana)),
+        ("Desvio-padrão", formatar_numero(desvio)),
+        ("Mínimo", formatar_numero(minimo)),
+        ("Máximo", formatar_numero(maximo)),
+        ("Coef. de variação", (
+            f"{formatar_numero(coef_variacao)} %"
+            if coef_variacao is not None else "N/D"
+        )),
+        ("Amplitude", formatar_numero(maximo - minimo))
+    ]
+
+    for i, (rotulo, valor) in enumerate(indicadores):
+        with colunas[i % 4]:
+            st.metric(rotulo, valor)
+
+    tabela_percentis = pd.DataFrame({
+        "Percentil": ["P10", "P25", "P50", "P75", "P90"],
+        "Valor": [
+            formatar_numero(v)
+            for v in percentis
+        ]
+    })
+
+    st.markdown("**Distribuição por percentis**")
+
+    st.dataframe(
+        tabela_percentis,
+        use_container_width=True,
+        hide_index=True
+    )
+
+    # =========================================================
+    # 8. HISTOGRAMA E CURVA NORMAL
+    # =========================================================
+
+    st.divider()
+    st.subheader("Distribuição de probabilidade")
+
+    quantidade_bins = min(
+        30,
+        max(5, int(np.sqrt(len(valores))))
+    )
+
+    frequencias, limites = np.histogram(
+        valores,
+        bins=quantidade_bins
+    )
+
+    centros = (
+        limites[:-1] + limites[1:]
+    ) / 2
+
+    largura_bin = float(
+        np.mean(np.diff(limites))
+    )
+
+    # Distribuição normal de referência
+    if desvio > 0:
+
+        pdf_normal = (
+            1 / (desvio * np.sqrt(2 * np.pi))
+        ) * np.exp(
+            -0.5 * ((centros - media) / desvio) ** 2
+        )
+
+        frequencia_normal = (
+            pdf_normal * len(valores) * largura_bin
+        )
+
+    else:
+        frequencia_normal = np.zeros_like(centros)
+
+    opcoes_distribuicao = {
+        "tooltip": {
+            "trigger": "axis",
+            "axisPointer": {
+                "type": "shadow"
+            }
+        },
+
+        "legend": {
+            "top": "2%",
+            "data": [
+                "Frequência observada",
+                "Normal de referência"
+            ]
+        },
+
+        "grid": {
+            "left": "8%",
+            "right": "5%",
+            "bottom": "15%",
+            "top": "18%",
+            "containLabel": True
+        },
+
+        "xAxis": {
+            "type": "category",
+            "name": nome_variavel,
+            "nameLocation": "middle",
+            "nameGap": 35,
+            "data": [
+                formatar_numero(v)
+                for v in centros
+            ],
+            "axisLabel": {
+                "rotate": 35,
+                "interval": "auto"
+            },
+            "splitLine": {
+                "show": False
+            }
+        },
+
+        "yAxis": {
+            "type": "value",
+            "name": "Frequência",
+            "splitLine": {
+                "show": False
+            }
+        },
+
+        "series": [
+            {
+                "name": "Frequência observada",
+                "type": "bar",
+                "data": frequencias.tolist(),
+                "barMaxWidth": 35,
+                "itemStyle": {
+                    "color": "#702082",
+                    "opacity": 0.7
+                }
+            },
+            {
+                "name": "Normal de referência",
+                "type": "line",
+                "data": frequencia_normal.tolist(),
+                "smooth": True,
+                "symbol": "none",
+                "lineStyle": {
+                    "width": 3,
+                    "color": "#008848"
+                }
+            }
+        ]
+    }
+
+    st_echarts(
+        options=opcoes_distribuicao,
+        height="430px",
+        key=f"estat_distribuicao_{prefixo}"
+    )
+
+    st.caption(
+        "A curva normal é uma referência calculada com a média "
+        "e o desvio-padrão da amostra. Ela não implica que os "
+        "dados sigam necessariamente uma distribuição normal."
+    )
+
+    # =========================================================
+    # 9. HEATMAPS DE DENSIDADE OPERACIONAL
+    # =========================================================
+
+    st.divider()
+    st.subheader("Mapas de densidade operacional")
+
+    st.caption(
+        "A intensidade da cor representa o percentual de amostras "
+        "da condição selecionada em cada região do mapa."
+    )
+
+    preditores = [
+        ("Velocidade", f"{prefixo}Speed_com"),
+        ("SOC", f"{prefixo}SOC_calc"),
+        ("RPM", f"{prefixo}RPM_com"),
+        ("Carga do motor", f"{prefixo}LoadCarga_com"),
+        ("Pedal do acelerador", f"{prefixo}Throttle_com")
+    ]
+
+    # Remove variáveis indisponíveis e comparações da variável consigo mesma
+    preditores_validos = [
+        (nome, chave)
+        for nome, chave in preditores
+        if chave in dados and chave != variavel_selecionada
+    ]
+
+    if not preditores_validos:
+        st.info(
+            "Não existem variáveis disponíveis para gerar os heatmaps."
+        )
+        return
+
+    for indice in range(0, len(preditores_validos), 2):
+
+        colunas_heatmap = st.columns(2)
+
+        for posicao in range(2):
+
+            indice_atual = indice + posicao
+
+            if indice_atual >= len(preditores_validos):
+                continue
+
+            nome_x, chave_x = preditores_validos[indice_atual]
+
+            x, y = extrair_par_condicionado(
+                dados,
+                chave_x,
+                variavel_selecionada,
+                nome_condicao
+            )
+
+            with colunas_heatmap[posicao]:
+
+                st.markdown(
+                    f"**{nome_x} × {nome_variavel}**"
+                )
+
+                if len(x) < 5:
+                    st.info(
+                        "Amostras insuficientes para este heatmap."
+                    )
+                    continue
+
+                if np.ptp(x) == 0 or np.ptp(y) == 0:
+                    st.info(
+                        "Não há variação suficiente nos dados "
+                        "para construir este heatmap."
+                    )
+                    continue
+
+                # Histograma bidimensional
+                matriz, limites_x, limites_y = np.histogram2d(
+                    x,
+                    y,
+                    bins=24
+                )
+
+                # Conversão para percentual de amostras
+                matriz_percentual = (
+                    matriz / len(x)
+                ) * 100
+
+                rotulos_x = [
+                    formatar_numero(
+                        (limites_x[i] + limites_x[i + 1]) / 2,
+                        1
+                    )
+                    for i in range(len(limites_x) - 1)
+                ]
+
+                rotulos_y = [
+                    formatar_numero(
+                        (limites_y[i] + limites_y[i + 1]) / 2,
+                        1
+                    )
+                    for i in range(len(limites_y) - 1)
+                ]
+
+                dados_heatmap = []
+
+                for i in range(matriz_percentual.shape[0]):
+                    for j in range(matriz_percentual.shape[1]):
+
+                        valor = matriz_percentual[i, j]
+
+                        if valor > 0:
+                            dados_heatmap.append([
+                                i,
+                                j,
+                                round(float(valor), 3)
+                            ])
+
+                maior_percentual = float(
+                    np.max(matriz_percentual)
+                )
+
+                opcoes_heatmap = {
+                    "tooltip": {
+                        "position": "top",
+                        "formatter": JsCode("""
+                            function(params) {
+                                return (
+                                    'Faixa X: ' + params.value[0] +
+                                    '<br>Faixa Y: ' + params.value[1] +
+                                    '<br>Concentração: ' +
+                                    params.value[2].toFixed(3) + '%'
+                                );
+                            }
+                        """)
+                    },
+
+                    "grid": {
+                        "left": "15%",
+                        "right": "10%",
+                        "bottom": "25%",
+                        "top": "8%",
+                        "containLabel": True
+                    },
+
+                    "xAxis": {
+                        "type": "category",
+                        "name": nome_x,
+                        "data": rotulos_x,
+                        "splitLine": {
+                            "show": False
+                        },
+                        "axisLabel": {
+                            "rotate": 45,
+                            "interval": 3,
+                            "fontSize": 9
+                        }
+                    },
+
+                    "yAxis": {
+                        "type": "category",
+                        "name": nome_variavel,
+                        "data": rotulos_y,
+                        "splitLine": {
+                            "show": False
+                        },
+                        "axisLabel": {
+                            "fontSize": 9
+                        }
+                    },
+
+                    "visualMap": {
+                        "min": 0,
+                        "max": maior_percentual,
+                        "calculable": True,
+                        "orient": "horizontal",
+                        "left": "center",
+                        "bottom": "0%",
+                        "dimension": 2,
+                        "text": [
+                            "Maior",
+                            "Menor"
+                        ]
+                    },
+
+                    "series": [
+                        {
+                            "name": "Concentração",
+                            "type": "heatmap",
+                            "data": dados_heatmap,
+                            "emphasis": {
+                                "itemStyle": {
+                                    "shadowBlur": 8
+                                }
+                            }
+                        }
+                    ]
+                }
+
+                st_echarts(
+                    options=opcoes_heatmap,
+                    height="390px",
+                    key=(
+                        f"heatmap_{prefixo}_"
+                        f"{chave_x}_{variavel_selecionada}"
+                    )
+                )
+
+
+
 # =======================================================================
 # 8. APLICAÇÃO PRINCIPAL
 # =======================================================================
@@ -1282,6 +1998,13 @@ def main_app():
                     st.warning("Nenhuma variável de condição foi identificada no Arquivo 2.")
             else:
                 st.info("Faça o upload do Arquivo 2 na barra lateral.")
+
+        st.divider()
+
+        renderizar_analise_estatistica(
+            arquivo_1,
+            arquivo_2
+        )
 
     # -------------------------------------------------------------------
     # MÓDULO 3: ANÁLISE ITEMM
