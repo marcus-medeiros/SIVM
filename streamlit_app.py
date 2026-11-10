@@ -2586,36 +2586,6 @@ def renderizar_comparacao_arquivos():
             key=f"comparacao_boxplot_{chave}"
         )
 
-        # -----------------------------------------------------
-        # LEGENDA EXPLICATIVA
-        # -----------------------------------------------------
-
-        st.markdown(
-            """
-            <div style="
-                display: flex;
-                gap: 22px;
-                flex-wrap: wrap;
-                justify-content: center;
-                margin-top: 5px;
-                font-size: 13px;
-            ">
-                <span style="color:#4b7bec;">
-                    ■ Q1 até Q3 — intervalo interquartil
-                </span>
-
-                <span style="color:#f39200;">
-                    ● Média
-                </span>
-
-                <span style="color:#4b7bec;">
-                    ━ Mínimo e máximo
-                </span>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
     # =========================================================
     # 5. COMPARAÇÃO FTP
     # =========================================================
