@@ -1874,19 +1874,21 @@ def renderizar_analise_estatistica(arquivo_1, arquivo_2):
                 )
 
 
+
 def renderizar_comparacao_arquivos():
 
     """
     Compara até três arquivos FTP e três arquivos Highway.
 
-    Para cada variável numérica:
-        - Valor mínimo
-        - Valor médio
-        - Valor máximo
-        - Quantidade de amostras
+    Permite calcular mínimo, média e máximo considerando:
+        - Todas as amostras
+        - Boost
+        - Alternador
+        - Neutro
+        - Frenagem regenerativa
 
-    Também apresenta um gráfico de intervalo mínimo-máximo,
-    com a média destacada para cada arquivo.
+    Também apresenta gráficos de intervalos mínimo-máximo,
+    com a média destacada.
     """
 
     st.title("Comparação de Ensaios")
@@ -1927,42 +1929,50 @@ def renderizar_comparacao_arquivos():
     arquivos_ftp = list(arquivos_ftp or [])
     arquivos_hgw = list(arquivos_hgw or [])
 
-    # Limitação de arquivos
     if len(arquivos_ftp) > 3:
-
         st.warning(
             "Foram selecionados mais de três arquivos FTP. "
             "Somente os três primeiros serão utilizados."
         )
-
         arquivos_ftp = arquivos_ftp[:3]
 
     if len(arquivos_hgw) > 3:
-
         st.warning(
             "Foram selecionados mais de três arquivos Highway. "
             "Somente os três primeiros serão utilizados."
         )
-
         arquivos_hgw = arquivos_hgw[:3]
 
     st.divider()
 
     # =========================================================
-    # 2. PROCESSAMENTO DOS ARQUIVOS
+    # 2. OPÇÕES DE CONDIÇÕES OPERACIONAIS
     # =========================================================
 
-    def processar_arquivos(arquivos, prefixo):
+    condicoes = {
+        "Todas as amostras": None,
+        "Boost": "boo",
+        "Alternador": "alt",
+        "Neutro": "neu",
+        "Frenagem regenerativa": "fre"
+    }
+
+    # =========================================================
+    # 3. PROCESSAMENTO DOS ARQUIVOS
+    # =========================================================
+
+    def processar_arquivos(arquivos, prefixo, condicao_selecionada):
 
         registros = []
+
+        # Quantidade de variáveis ignoradas por divergência de tamanho
+        total_ignoradas = 0
 
         for arquivo in arquivos:
 
             try:
 
-                # Retorna o ponteiro para o início do arquivo
                 arquivo.seek(0)
-
                 dados = carregar_arquivo_mat(arquivo)
 
                 if not isinstance(dados, dict) or not dados:
@@ -1971,38 +1981,118 @@ def renderizar_comparacao_arquivos():
                     )
                     continue
 
-                # Filtra as variáveis pertencentes ao ciclo
+                # -------------------------------------------------
+                # CARREGAR MÁSCARA DA CONDIÇÃO
+                # -------------------------------------------------
+
+                mascara_condicao = None
+
+                if condicao_selecionada is not None:
+
+                    nome_condicao = (
+                        f"{prefixo}condicao_{condicao_selecionada}"
+                    )
+
+                    if nome_condicao not in dados:
+
+                        st.warning(
+                            f"{arquivo.name}: a variável "
+                            f"{nome_condicao} não foi encontrada. "
+                            "Esse arquivo não será utilizado nessa condição."
+                        )
+
+                        continue
+
+                    try:
+
+                        valores_condicao = np.asarray(
+                            dados[nome_condicao],
+                            dtype=float
+                        ).ravel()
+
+                        mascara_condicao = (
+                            np.isfinite(valores_condicao)
+                            & (valores_condicao > 0)
+                        )
+
+                    except (TypeError, ValueError):
+
+                        st.warning(
+                            f"Não foi possível interpretar {nome_condicao} "
+                            f"em {arquivo.name}."
+                        )
+
+                        continue
+
+                    if not np.any(mascara_condicao):
+
+                        st.warning(
+                            f"{arquivo.name}: não existem amostras válidas "
+                            "para a condição selecionada."
+                        )
+
+                        continue
+
+                # -------------------------------------------------
+                # PROCESSAMENTO DAS VARIÁVEIS
+                # -------------------------------------------------
+
                 variaveis = [
                     nome for nome in dados.keys()
                     if nome.startswith(prefixo)
+                    and not nome.startswith(f"{prefixo}condicao_")
                 ]
 
                 if not variaveis:
 
                     st.warning(
-                        f"Nenhuma variável com prefixo '{prefixo}' "
-                        f"foi encontrada em {arquivo.name}."
+                        f"Nenhuma variável numérica encontrada "
+                        f"em {arquivo.name}."
                     )
 
                     continue
 
                 for nome_variavel in variaveis:
 
-                    bruto = dados[nome_variavel]
-
                     try:
 
                         valores = np.asarray(
-                            bruto,
+                            dados[nome_variavel],
                             dtype=float
                         ).ravel()
 
-                        valores = valores[
-                            np.isfinite(valores)
-                        ]
+                        # Remover valores inválidos
+                        if valores.size == 0:
+                            continue
+
+                        # -------------------------------------------------
+                        # APLICAÇÃO DA CONDIÇÃO OPERACIONAL
+                        # -------------------------------------------------
+
+                        if mascara_condicao is not None:
+
+                            # Não é possível associar um escalar ou um
+                            # vetor de tamanho diferente à condição.
+                            if len(valores) != len(mascara_condicao):
+
+                                total_ignoradas += 1
+                                continue
+
+                            valores = valores[mascara_condicao]
+
+                        else:
+
+                            valores = valores[np.isfinite(valores)]
+
+                        # Remover valores inválidos após a filtragem
+                        valores = valores[np.isfinite(valores)]
 
                         if valores.size == 0:
                             continue
+
+                        # -------------------------------------------------
+                        # CÁLCULO ESTATÍSTICO
+                        # -------------------------------------------------
 
                         registros.append({
 
@@ -2031,50 +2121,57 @@ def renderizar_comparacao_arquivos():
                     f"Erro ao processar {arquivo.name}: {erro}"
                 )
 
+        if total_ignoradas > 0 and condicao_selecionada is not None:
+
+            st.info(
+                f"{total_ignoradas} variável(is) foram ignoradas "
+                "porque não possuem o mesmo número de amostras "
+                "da máscara de condição selecionada."
+            )
+
         return registros
 
     # =========================================================
-    # 3. FUNÇÃO PARA EXIBIR A COMPARAÇÃO DE UM GRUPO
+    # 4. FUNÇÃO PARA EXIBIR A COMPARAÇÃO
     # =========================================================
 
     def exibir_comparacao(
         registros,
         nome_grupo,
-        prefixo,
-        chave
+        chave,
+        condicao_nome
     ):
-
-        st.header(nome_grupo)
 
         if not registros:
 
-            st.info(
-                f"Selecione arquivos {nome_grupo} para "
-                "realizar a comparação."
+            st.warning(
+                f"Não existem dados suficientes para a comparação "
+                f"de {nome_grupo} na condição selecionada."
             )
 
             return
 
         df = pd.DataFrame(registros)
 
-        # Ordenação
         df = df.sort_values(
             by=["Variável", "Arquivo"]
         ).reset_index(drop=True)
 
-        # Arquivos efetivamente processados
         quantidade_arquivos = df["Arquivo"].nunique()
 
         st.caption(
-            f"{quantidade_arquivos} arquivo(s) processado(s) "
-            f"e {df['Variável'].nunique()} variável(is) encontrada(s)."
+            f"{quantidade_arquivos} arquivo(s) processado(s) | "
+            f"{df['Variável'].nunique()} variável(is) encontrada(s) | "
+            f"Condição: {condicao_nome}"
         )
 
         # -----------------------------------------------------
-        # TABELA COMPLETA
+        # TABELA ESTATÍSTICA
         # -----------------------------------------------------
 
-        st.subheader("Resumo estatístico das variáveis")
+        st.subheader(
+            f"Resumo estatístico — {condicao_nome}"
+        )
 
         st.dataframe(
             df.style.format({
@@ -2115,12 +2212,10 @@ def renderizar_comparacao_arquivos():
             return
 
         # -----------------------------------------------------
-        # DADOS DO GRÁFICO DE INTERVALOS
+        # DADOS DO GRÁFICO
         # -----------------------------------------------------
 
-        nomes_arquivos = df_grafico[
-            "Arquivo"
-        ].tolist()
+        nomes_arquivos = df_grafico["Arquivo"].tolist()
 
         dados_grafico = []
 
@@ -2134,7 +2229,8 @@ def renderizar_comparacao_arquivos():
                     int(indice),
                     float(linha["Mínimo"]),
                     float(linha["Máximo"]),
-                    float(linha["Média"])
+                    float(linha["Média"]),
+                    int(linha["Amostras"])
                 ]
 
             })
@@ -2146,11 +2242,9 @@ def renderizar_comparacao_arquivos():
         opcoes_intervalos = {
 
             "title": {
-                "text": (
-                    f"Comparação de {variavel_selecionada}"
-                ),
+                "text": f"Comparação de {variavel_selecionada}",
                 "subtext": (
-                    f"{nome_grupo} — "
+                    f"{nome_grupo} — {condicao_nome} | "
                     "Intervalo mínimo-máximo e média"
                 ),
                 "left": "center",
@@ -2175,10 +2269,11 @@ def renderizar_comparacao_arquivos():
                             '<br>Média: ' +
                             Number(v[3]).toFixed(2).replace('.', ',') +
                             '<br>Máximo: ' +
-                            Number(v[2]).toFixed(2).replace('.', ',')
+                            Number(v[2]).toFixed(2).replace('.', ',') +
+                            '<br>Amostras: ' + v[4]
                         );
                     }
-                """)
+                """).js_code
             },
 
             "grid": {
@@ -2255,7 +2350,6 @@ def renderizar_comparacao_arquivos():
 
                                 children: [
 
-                                    // Linha do intervalo
                                     {
                                         type: 'line',
 
@@ -2272,7 +2366,6 @@ def renderizar_comparacao_arquivos():
                                         }
                                     },
 
-                                    // Limite mínimo
                                     {
                                         type: 'line',
 
@@ -2289,7 +2382,6 @@ def renderizar_comparacao_arquivos():
                                         }
                                     },
 
-                                    // Limite máximo
                                     {
                                         type: 'line',
 
@@ -2306,7 +2398,6 @@ def renderizar_comparacao_arquivos():
                                         }
                                     },
 
-                                    // Média
                                     {
                                         type: 'circle',
 
@@ -2326,7 +2417,7 @@ def renderizar_comparacao_arquivos():
                                 ]
                             };
                         }
-                    """),
+                    """).js_code,
 
                     "encode": {
                         "x": 0,
@@ -2348,12 +2439,12 @@ def renderizar_comparacao_arquivos():
         )
 
         st.caption(
-            "A barra vertical representa o intervalo entre o "
-            "mínimo e o máximo. O marcador verde representa a média."
+            "A barra vertical representa o intervalo entre o mínimo "
+            "e o máximo. O marcador verde representa a média."
         )
 
     # =========================================================
-    # 4. COMPARAÇÃO FTP
+    # 5. COMPARAÇÃO FTP
     # =========================================================
 
     if arquivos_ftp:
@@ -2363,20 +2454,27 @@ def renderizar_comparacao_arquivos():
             expanded=True
         ):
 
+            condicao_ftp = st.selectbox(
+                "Condição operacional — FTP:",
+                list(condicoes.keys()),
+                key="comparacao_condicao_ftp"
+            )
+
             registros_ftp = processar_arquivos(
                 arquivos_ftp,
-                prefixo="f"
+                prefixo="f",
+                condicao_selecionada=condicoes[condicao_ftp]
             )
 
             exibir_comparacao(
                 registros_ftp,
                 nome_grupo="FTP",
-                prefixo="f",
-                chave="ftp"
+                chave="ftp",
+                condicao_nome=condicao_ftp
             )
 
     # =========================================================
-    # 5. COMPARAÇÃO HIGHWAY
+    # 6. COMPARAÇÃO HIGHWAY
     # =========================================================
 
     if arquivos_hgw:
@@ -2386,20 +2484,27 @@ def renderizar_comparacao_arquivos():
             expanded=True
         ):
 
+            condicao_hgw = st.selectbox(
+                "Condição operacional — Highway:",
+                list(condicoes.keys()),
+                key="comparacao_condicao_highway"
+            )
+
             registros_hgw = processar_arquivos(
                 arquivos_hgw,
-                prefixo="h"
+                prefixo="h",
+                condicao_selecionada=condicoes[condicao_hgw]
             )
 
             exibir_comparacao(
                 registros_hgw,
                 nome_grupo="Highway",
-                prefixo="h",
-                chave="highway"
+                chave="highway",
+                condicao_nome=condicao_hgw
             )
 
     # =========================================================
-    # 6. MENSAGEM CASO NÃO HAJA ARQUIVOS
+    # 7. MENSAGEM CASO NÃO HAJA ARQUIVOS
     # =========================================================
 
     if not arquivos_ftp and not arquivos_hgw:
