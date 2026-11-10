@@ -2615,35 +2615,6 @@ def renderizar_comparacao_arquivos():
             height="480px",
             key=f"comparacao_intervalos_{chave}"
         )
-
-        # -----------------------------------------------------
-        # LEGENDA
-        # -----------------------------------------------------
-
-        st.markdown(
-            """
-            <div style="
-                display: flex;
-                gap: 24px;
-                flex-wrap: wrap;
-                justify-content: center;
-                margin-top: 8px;
-                font-size: 13px;
-            ">
-                <span>
-                    <span style="color:#4b7bec;">●</span>
-                    Intervalo mínimo–máximo
-                </span>
-
-                <span>
-                    <span style="color:#f39200;">●</span>
-                    Média
-                </span>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
     # =========================================================
     # 5. COMPARAÇÃO FTP
     # =========================================================
