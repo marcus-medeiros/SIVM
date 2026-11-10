@@ -2361,7 +2361,7 @@ def renderizar_comparacao_arquivos():
                                         },
 
                                         style: {
-                                            stroke: '#702082',
+                                            stroke: '#0000b3',
                                             lineWidth: 5
                                         }
                                     },
@@ -2377,7 +2377,7 @@ def renderizar_comparacao_arquivos():
                                         },
 
                                         style: {
-                                            stroke: '#702082',
+                                            stroke: '#0000b3',
                                             lineWidth: 2
                                         }
                                     },
@@ -2393,7 +2393,7 @@ def renderizar_comparacao_arquivos():
                                         },
 
                                         style: {
-                                            stroke: '#702082',
+                                            stroke: '#0000b3',
                                             lineWidth: 2
                                         }
                                     },
@@ -2408,7 +2408,7 @@ def renderizar_comparacao_arquivos():
                                         },
 
                                         style: {
-                                            fill: '#008848',
+                                            fill: '#e6c300',
                                             stroke: '#ffffff',
                                             lineWidth: 1
                                         }
