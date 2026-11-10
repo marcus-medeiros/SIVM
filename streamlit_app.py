@@ -1875,20 +1875,27 @@ def renderizar_analise_estatistica(arquivo_1, arquivo_2):
 
 
 
+
 def renderizar_comparacao_arquivos():
 
     """
     Compara até três arquivos FTP e três arquivos Highway.
 
-    Permite calcular mínimo, média e máximo considerando:
+    Condições disponíveis:
         - Todas as amostras
         - Boost
         - Alternador
         - Neutro
         - Frenagem regenerativa
 
-    Também apresenta gráficos de intervalos mínimo-máximo,
-    com a média destacada.
+    Indicadores:
+        - Mínimo
+        - Média
+        - Máximo
+        - Quantidade de amostras
+
+    Apresenta tabela estatística e gráfico de intervalos,
+    com os valores mínimo, médio e máximo identificados.
     """
 
     st.title("Comparação de Ensaios")
@@ -1930,23 +1937,27 @@ def renderizar_comparacao_arquivos():
     arquivos_hgw = list(arquivos_hgw or [])
 
     if len(arquivos_ftp) > 3:
+
         st.warning(
             "Foram selecionados mais de três arquivos FTP. "
             "Somente os três primeiros serão utilizados."
         )
+
         arquivos_ftp = arquivos_ftp[:3]
 
     if len(arquivos_hgw) > 3:
+
         st.warning(
             "Foram selecionados mais de três arquivos Highway. "
             "Somente os três primeiros serão utilizados."
         )
+
         arquivos_hgw = arquivos_hgw[:3]
 
     st.divider()
 
     # =========================================================
-    # 2. OPÇÕES DE CONDIÇÕES OPERACIONAIS
+    # 2. CONDIÇÕES OPERACIONAIS
     # =========================================================
 
     condicoes = {
@@ -1965,7 +1976,6 @@ def renderizar_comparacao_arquivos():
 
         registros = []
 
-        # Quantidade de variáveis ignoradas por divergência de tamanho
         total_ignoradas = 0
 
         for arquivo in arquivos:
@@ -1973,16 +1983,19 @@ def renderizar_comparacao_arquivos():
             try:
 
                 arquivo.seek(0)
+
                 dados = carregar_arquivo_mat(arquivo)
 
                 if not isinstance(dados, dict) or not dados:
+
                     st.warning(
                         f"Não foi possível carregar {arquivo.name}."
                     )
+
                     continue
 
                 # -------------------------------------------------
-                # CARREGAR MÁSCARA DA CONDIÇÃO
+                # MÁSCARA DA CONDIÇÃO OPERACIONAL
                 # -------------------------------------------------
 
                 mascara_condicao = None
@@ -1998,7 +2011,8 @@ def renderizar_comparacao_arquivos():
                         st.warning(
                             f"{arquivo.name}: a variável "
                             f"{nome_condicao} não foi encontrada. "
-                            "Esse arquivo não será utilizado nessa condição."
+                            "Esse arquivo não será utilizado "
+                            "nesta condição."
                         )
 
                         continue
@@ -2018,8 +2032,8 @@ def renderizar_comparacao_arquivos():
                     except (TypeError, ValueError):
 
                         st.warning(
-                            f"Não foi possível interpretar {nome_condicao} "
-                            f"em {arquivo.name}."
+                            f"Não foi possível interpretar "
+                            f"{nome_condicao} em {arquivo.name}."
                         )
 
                         continue
@@ -2027,14 +2041,14 @@ def renderizar_comparacao_arquivos():
                     if not np.any(mascara_condicao):
 
                         st.warning(
-                            f"{arquivo.name}: não existem amostras válidas "
-                            "para a condição selecionada."
+                            f"{arquivo.name}: não existem amostras "
+                            "válidas para a condição selecionada."
                         )
 
                         continue
 
                 # -------------------------------------------------
-                # PROCESSAMENTO DAS VARIÁVEIS
+                # IDENTIFICAÇÃO DAS VARIÁVEIS
                 # -------------------------------------------------
 
                 variaveis = [
@@ -2052,6 +2066,10 @@ def renderizar_comparacao_arquivos():
 
                     continue
 
+                # -------------------------------------------------
+                # PROCESSAMENTO INDIVIDUAL DAS VARIÁVEIS
+                # -------------------------------------------------
+
                 for nome_variavel in variaveis:
 
                     try:
@@ -2061,18 +2079,14 @@ def renderizar_comparacao_arquivos():
                             dtype=float
                         ).ravel()
 
-                        # Remover valores inválidos
                         if valores.size == 0:
                             continue
 
-                        # -------------------------------------------------
-                        # APLICAÇÃO DA CONDIÇÃO OPERACIONAL
-                        # -------------------------------------------------
-
+                        # Aplicação da condição operacional
                         if mascara_condicao is not None:
 
-                            # Não é possível associar um escalar ou um
-                            # vetor de tamanho diferente à condição.
+                            # Os sinais precisam ter o mesmo
+                            # número de amostras da condição.
                             if len(valores) != len(mascara_condicao):
 
                                 total_ignoradas += 1
@@ -2082,17 +2096,20 @@ def renderizar_comparacao_arquivos():
 
                         else:
 
-                            valores = valores[np.isfinite(valores)]
+                            valores = valores[
+                                np.isfinite(valores)
+                            ]
 
-                        # Remover valores inválidos após a filtragem
-                        valores = valores[np.isfinite(valores)]
+                        valores = valores[
+                            np.isfinite(valores)
+                        ]
 
                         if valores.size == 0:
                             continue
 
-                        # -------------------------------------------------
-                        # CÁLCULO ESTATÍSTICO
-                        # -------------------------------------------------
+                        # -----------------------------------------
+                        # CÁLCULOS ESTATÍSTICOS
+                        # -----------------------------------------
 
                         registros.append({
 
@@ -2132,7 +2149,7 @@ def renderizar_comparacao_arquivos():
         return registros
 
     # =========================================================
-    # 4. FUNÇÃO PARA EXIBIR A COMPARAÇÃO
+    # 4. EXIBIÇÃO DA COMPARAÇÃO
     # =========================================================
 
     def exibir_comparacao(
@@ -2184,7 +2201,7 @@ def renderizar_comparacao_arquivos():
         )
 
         # -----------------------------------------------------
-        # SELEÇÃO DA VARIÁVEL PARA O GRÁFICO
+        # SELEÇÃO DA VARIÁVEL
         # -----------------------------------------------------
 
         st.divider()
@@ -2206,16 +2223,20 @@ def renderizar_comparacao_arquivos():
         ].reset_index(drop=True)
 
         if df_grafico.empty:
+
             st.warning(
                 "Não existem dados disponíveis para essa variável."
             )
+
             return
 
         # -----------------------------------------------------
         # DADOS DO GRÁFICO
         # -----------------------------------------------------
 
-        nomes_arquivos = df_grafico["Arquivo"].tolist()
+        nomes_arquivos = df_grafico[
+            "Arquivo"
+        ].tolist()
 
         dados_grafico = []
 
@@ -2236,25 +2257,62 @@ def renderizar_comparacao_arquivos():
             })
 
         # -----------------------------------------------------
-        # GRÁFICO MÍNIMO, MÉDIA E MÁXIMO
+        # MARGEM AUTOMÁTICA DO EIXO Y
+        # -----------------------------------------------------
+
+        valor_minimo_global = float(
+            df_grafico["Mínimo"].min()
+        )
+
+        valor_maximo_global = float(
+            df_grafico["Máximo"].max()
+        )
+
+        amplitude_global = (
+            valor_maximo_global - valor_minimo_global
+        )
+
+        margem = max(
+            amplitude_global * 0.15,
+            abs(valor_minimo_global) * 0.03,
+            abs(valor_maximo_global) * 0.03,
+            0.01
+        )
+
+        limite_inferior = valor_minimo_global - margem
+        limite_superior = valor_maximo_global + margem
+
+        # -----------------------------------------------------
+        # GRÁFICO DE INTERVALOS
         # -----------------------------------------------------
 
         opcoes_intervalos = {
 
             "title": {
+
                 "text": f"Comparação de {variavel_selecionada}",
+
                 "subtext": (
                     f"{nome_grupo} — {condicao_nome} | "
-                    "Intervalo mínimo-máximo e média"
+                    "Mínimo, média e máximo"
                 ),
+
                 "left": "center",
                 "top": "2%",
+
                 "textStyle": {
-                    "fontSize": 17
+                    "fontSize": 17,
+                    "fontWeight": "bold"
+                },
+
+                "subtextStyle": {
+                    "fontSize": 11,
+                    "color": "#757575"
                 }
             },
 
             "tooltip": {
+
                 "trigger": "item",
 
                 "formatter": JsCode("""
@@ -2263,7 +2321,7 @@ def renderizar_comparacao_arquivos():
                         const v = params.value;
 
                         return (
-                            params.name +
+                            '<b>' + params.name + '</b>' +
                             '<br>Mínimo: ' +
                             Number(v[1]).toFixed(2).replace('.', ',') +
                             '<br>Média: ' +
@@ -2277,30 +2335,50 @@ def renderizar_comparacao_arquivos():
             },
 
             "grid": {
-                "left": "10%",
-                "right": "5%",
-                "bottom": "15%",
-                "top": "22%",
+
+                "left": "12%",
+                "right": "8%",
+                "bottom": "18%",
+                "top": "24%",
                 "containLabel": True
             },
 
             "xAxis": {
+
                 "type": "category",
+
                 "name": "Arquivo",
+
                 "data": nomes_arquivos,
+
                 "axisLabel": {
                     "rotate": 15,
                     "interval": 0,
                     "fontSize": 10
                 },
+
                 "splitLine": {
                     "show": False
                 }
             },
 
             "yAxis": {
+
                 "type": "value",
+
                 "name": variavel_selecionada,
+
+                "min": limite_inferior,
+                "max": limite_superior,
+
+                "axisLabel": {
+                    "formatter": JsCode("""
+                        function(value) {
+                            return Number(value).toFixed(2).replace('.', ',');
+                        }
+                    """).js_code
+                },
+
                 "splitLine": {
                     "show": False
                 }
@@ -2309,7 +2387,9 @@ def renderizar_comparacao_arquivos():
             "series": [
 
                 {
+
                     "name": "Intervalo e média",
+
                     "type": "custom",
 
                     "renderItem": JsCode("""
@@ -2321,6 +2401,7 @@ def renderizar_comparacao_arquivos():
                             const maximo = api.value(2);
                             const media = api.value(3);
 
+                            // Coordenadas dos valores
                             const pontoMin = api.coord([
                                 indice,
                                 minimo
@@ -2344,11 +2425,22 @@ def renderizar_comparacao_arquivos():
 
                             const largura = 12;
 
+                            // Formatação decimal brasileira
+                            const formatar = function(valor) {
+                                return Number(valor)
+                                    .toFixed(2)
+                                    .replace('.', ',');
+                            };
+
                             return {
 
                                 type: 'group',
 
                                 children: [
+
+                                    // =================================
+                                    // BARRA DO INTERVALO
+                                    // =================================
 
                                     {
                                         type: 'line',
@@ -2361,10 +2453,14 @@ def renderizar_comparacao_arquivos():
                                         },
 
                                         style: {
-                                            stroke: '#0000b3',
+                                            stroke: '#4b7bec',
                                             lineWidth: 5
                                         }
                                     },
+
+                                    // =================================
+                                    // LIMITE MÍNIMO
+                                    // =================================
 
                                     {
                                         type: 'line',
@@ -2377,10 +2473,14 @@ def renderizar_comparacao_arquivos():
                                         },
 
                                         style: {
-                                            stroke: '#0000b3',
+                                            stroke: '#4b7bec',
                                             lineWidth: 2
                                         }
                                     },
+
+                                    // =================================
+                                    // LIMITE MÁXIMO
+                                    // =================================
 
                                     {
                                         type: 'line',
@@ -2393,10 +2493,14 @@ def renderizar_comparacao_arquivos():
                                         },
 
                                         style: {
-                                            stroke: '#0000b3',
+                                            stroke: '#4b7bec',
                                             lineWidth: 2
                                         }
                                     },
+
+                                    // =================================
+                                    // MARCADOR DA MÉDIA
+                                    // =================================
 
                                     {
                                         type: 'circle',
@@ -2408,9 +2512,81 @@ def renderizar_comparacao_arquivos():
                                         },
 
                                         style: {
-                                            fill: '#e6c300',
+                                            fill: '#f39200',
                                             stroke: '#ffffff',
                                             lineWidth: 1
+                                        }
+                                    },
+
+                                    // =================================
+                                    // RÓTULO DO MÁXIMO
+                                    // =================================
+
+                                    {
+                                        type: 'text',
+
+                                        style: {
+
+                                            x: x,
+                                            y: yMax - 10,
+
+                                            text: 'Máx: ' + formatar(maximo),
+
+                                            fill: '#4b7bec',
+
+                                            font: 'bold 11px sans-serif',
+
+                                            textAlign: 'center',
+
+                                            textVerticalAlign: 'bottom'
+                                        }
+                                    },
+
+                                    // =================================
+                                    // RÓTULO DO MÍNIMO
+                                    // =================================
+
+                                    {
+                                        type: 'text',
+
+                                        style: {
+
+                                            x: x,
+                                            y: yMin + 10,
+
+                                            text: 'Mín: ' + formatar(minimo),
+
+                                            fill: '#4b7bec',
+
+                                            font: 'bold 11px sans-serif',
+
+                                            textAlign: 'center',
+
+                                            textVerticalAlign: 'top'
+                                        }
+                                    },
+
+                                    // =================================
+                                    // RÓTULO DA MÉDIA
+                                    // =================================
+
+                                    {
+                                        type: 'text',
+
+                                        style: {
+
+                                            x: x + 12,
+                                            y: yMedia,
+
+                                            text: 'Média: ' + formatar(media),
+
+                                            fill: '#f39200',
+
+                                            font: 'bold 11px sans-serif',
+
+                                            textAlign: 'left',
+
+                                            textVerticalAlign: 'middle'
                                         }
                                     }
 
@@ -2434,13 +2610,36 @@ def renderizar_comparacao_arquivos():
 
         st_echarts(
             options=opcoes_intervalos,
-            height="440px",
+            height="480px",
             key=f"comparacao_intervalos_{chave}"
         )
 
-        st.caption(
-            "A barra vertical representa o intervalo entre o mínimo "
-            "e o máximo. O marcador verde representa a média."
+        # -----------------------------------------------------
+        # LEGENDA
+        # -----------------------------------------------------
+
+        st.markdown(
+            """
+            <div style="
+                display: flex;
+                gap: 24px;
+                flex-wrap: wrap;
+                justify-content: center;
+                margin-top: 8px;
+                font-size: 13px;
+            ">
+                <span>
+                    <span style="color:#4b7bec;">●</span>
+                    Intervalo mínimo–máximo
+                </span>
+
+                <span>
+                    <span style="color:#f39200;">●</span>
+                    Média
+                </span>
+            </div>
+            """,
+            unsafe_allow_html=True
         )
 
     # =========================================================
@@ -2456,20 +2655,27 @@ def renderizar_comparacao_arquivos():
 
             condicao_ftp = st.selectbox(
                 "Condição operacional — FTP:",
+
                 list(condicoes.keys()),
+
                 key="comparacao_condicao_ftp"
             )
 
             registros_ftp = processar_arquivos(
                 arquivos_ftp,
+
                 prefixo="f",
+
                 condicao_selecionada=condicoes[condicao_ftp]
             )
 
             exibir_comparacao(
                 registros_ftp,
+
                 nome_grupo="FTP",
+
                 chave="ftp",
+
                 condicao_nome=condicao_ftp
             )
 
@@ -2486,25 +2692,32 @@ def renderizar_comparacao_arquivos():
 
             condicao_hgw = st.selectbox(
                 "Condição operacional — Highway:",
+
                 list(condicoes.keys()),
+
                 key="comparacao_condicao_highway"
             )
 
             registros_hgw = processar_arquivos(
                 arquivos_hgw,
+
                 prefixo="h",
+
                 condicao_selecionada=condicoes[condicao_hgw]
             )
 
             exibir_comparacao(
                 registros_hgw,
+
                 nome_grupo="Highway",
+
                 chave="highway",
+
                 condicao_nome=condicao_hgw
             )
 
     # =========================================================
-    # 7. MENSAGEM CASO NÃO HAJA ARQUIVOS
+    # 7. MENSAGEM INICIAL
     # =========================================================
 
     if not arquivos_ftp and not arquivos_hgw:
