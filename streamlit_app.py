@@ -2772,10 +2772,10 @@ def main_app():
     elif pagina_selecionada == "⚖️ Comparação":
     
         renderizar_comparacao_arquivos()
-    # =======================================================================
-    # 9. CONTROLE DE FLUXO
-    # =======================================================================
-    if st.session_state["authenticated"]:
-        main_app()
-    else:
-        check_login()
+# =======================================================================
+# 9. CONTROLE DE FLUXO
+# =======================================================================
+if st.session_state["authenticated"]:
+    main_app()
+else:
+    check_login()
