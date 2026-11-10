@@ -1874,6 +1874,542 @@ def renderizar_analise_estatistica(arquivo_1, arquivo_2):
                 )
 
 
+def renderizar_comparacao_arquivos():
+
+    """
+    Compara até três arquivos FTP e três arquivos Highway.
+
+    Para cada variável numérica:
+        - Valor mínimo
+        - Valor médio
+        - Valor máximo
+        - Quantidade de amostras
+
+    Também apresenta um gráfico de intervalo mínimo-máximo,
+    com a média destacada para cada arquivo.
+    """
+
+    st.title("Comparação de Ensaios")
+
+    st.caption(
+        "Compare os indicadores estatísticos de até três ensaios "
+        "FTP e três ensaios Highway."
+    )
+
+    # =========================================================
+    # 1. UPLOAD DOS ARQUIVOS
+    # =========================================================
+
+    col_ftp, col_hgw = st.columns(2)
+
+    with col_ftp:
+
+        st.subheader("Arquivos FTP")
+
+        arquivos_ftp = st.file_uploader(
+            "Selecione até 3 arquivos FTP (.mat)",
+            type=["mat"],
+            accept_multiple_files=True,
+            key="comparacao_upload_ftp"
+        )
+
+    with col_hgw:
+
+        st.subheader("Arquivos Highway")
+
+        arquivos_hgw = st.file_uploader(
+            "Selecione até 3 arquivos Highway (.mat)",
+            type=["mat"],
+            accept_multiple_files=True,
+            key="comparacao_upload_hgw"
+        )
+
+    arquivos_ftp = list(arquivos_ftp or [])
+    arquivos_hgw = list(arquivos_hgw or [])
+
+    # Limitação de arquivos
+    if len(arquivos_ftp) > 3:
+
+        st.warning(
+            "Foram selecionados mais de três arquivos FTP. "
+            "Somente os três primeiros serão utilizados."
+        )
+
+        arquivos_ftp = arquivos_ftp[:3]
+
+    if len(arquivos_hgw) > 3:
+
+        st.warning(
+            "Foram selecionados mais de três arquivos Highway. "
+            "Somente os três primeiros serão utilizados."
+        )
+
+        arquivos_hgw = arquivos_hgw[:3]
+
+    st.divider()
+
+    # =========================================================
+    # 2. PROCESSAMENTO DOS ARQUIVOS
+    # =========================================================
+
+    def processar_arquivos(arquivos, prefixo):
+
+        registros = []
+
+        for arquivo in arquivos:
+
+            try:
+
+                # Retorna o ponteiro para o início do arquivo
+                arquivo.seek(0)
+
+                dados = carregar_arquivo_mat(arquivo)
+
+                if not isinstance(dados, dict) or not dados:
+                    st.warning(
+                        f"Não foi possível carregar {arquivo.name}."
+                    )
+                    continue
+
+                # Filtra as variáveis pertencentes ao ciclo
+                variaveis = [
+                    nome for nome in dados.keys()
+                    if nome.startswith(prefixo)
+                ]
+
+                if not variaveis:
+
+                    st.warning(
+                        f"Nenhuma variável com prefixo '{prefixo}' "
+                        f"foi encontrada em {arquivo.name}."
+                    )
+
+                    continue
+
+                for nome_variavel in variaveis:
+
+                    bruto = dados[nome_variavel]
+
+                    try:
+
+                        valores = np.asarray(
+                            bruto,
+                            dtype=float
+                        ).ravel()
+
+                        valores = valores[
+                            np.isfinite(valores)
+                        ]
+
+                        if valores.size == 0:
+                            continue
+
+                        registros.append({
+
+                            "Arquivo": arquivo.name,
+
+                            "Variável": nome_variavel[
+                                len(prefixo):
+                            ],
+
+                            "Amostras": int(valores.size),
+
+                            "Mínimo": float(np.min(valores)),
+
+                            "Média": float(np.mean(valores)),
+
+                            "Máximo": float(np.max(valores))
+
+                        })
+
+                    except (TypeError, ValueError):
+                        continue
+
+            except Exception as erro:
+
+                st.error(
+                    f"Erro ao processar {arquivo.name}: {erro}"
+                )
+
+        return registros
+
+    # =========================================================
+    # 3. FUNÇÃO PARA EXIBIR A COMPARAÇÃO DE UM GRUPO
+    # =========================================================
+
+    def exibir_comparacao(
+        registros,
+        nome_grupo,
+        prefixo,
+        chave
+    ):
+
+        st.header(nome_grupo)
+
+        if not registros:
+
+            st.info(
+                f"Selecione arquivos {nome_grupo} para "
+                "realizar a comparação."
+            )
+
+            return
+
+        df = pd.DataFrame(registros)
+
+        # Ordenação
+        df = df.sort_values(
+            by=["Variável", "Arquivo"]
+        ).reset_index(drop=True)
+
+        # Arquivos efetivamente processados
+        quantidade_arquivos = df["Arquivo"].nunique()
+
+        st.caption(
+            f"{quantidade_arquivos} arquivo(s) processado(s) "
+            f"e {df['Variável'].nunique()} variável(is) encontrada(s)."
+        )
+
+        # -----------------------------------------------------
+        # TABELA COMPLETA
+        # -----------------------------------------------------
+
+        st.subheader("Resumo estatístico das variáveis")
+
+        st.dataframe(
+            df.style.format({
+                "Mínimo": "{:.2f}",
+                "Média": "{:.2f}",
+                "Máximo": "{:.2f}"
+            }),
+            use_container_width=True,
+            hide_index=True
+        )
+
+        # -----------------------------------------------------
+        # SELEÇÃO DA VARIÁVEL PARA O GRÁFICO
+        # -----------------------------------------------------
+
+        st.divider()
+
+        st.subheader("Comparação dos intervalos")
+
+        variaveis = sorted(
+            df["Variável"].unique().tolist()
+        )
+
+        variavel_selecionada = st.selectbox(
+            "Selecione a variável para comparar:",
+            variaveis,
+            key=f"comparacao_variavel_{chave}"
+        )
+
+        df_grafico = df[
+            df["Variável"] == variavel_selecionada
+        ].reset_index(drop=True)
+
+        if df_grafico.empty:
+            st.warning(
+                "Não existem dados disponíveis para essa variável."
+            )
+            return
+
+        # -----------------------------------------------------
+        # DADOS DO GRÁFICO DE INTERVALOS
+        # -----------------------------------------------------
+
+        nomes_arquivos = df_grafico[
+            "Arquivo"
+        ].tolist()
+
+        dados_grafico = []
+
+        for indice, linha in df_grafico.iterrows():
+
+            dados_grafico.append({
+
+                "name": str(linha["Arquivo"]),
+
+                "value": [
+                    int(indice),
+                    float(linha["Mínimo"]),
+                    float(linha["Máximo"]),
+                    float(linha["Média"])
+                ]
+
+            })
+
+        # -----------------------------------------------------
+        # GRÁFICO MÍNIMO, MÉDIA E MÁXIMO
+        # -----------------------------------------------------
+
+        opcoes_intervalos = {
+
+            "title": {
+                "text": (
+                    f"Comparação de {variavel_selecionada}"
+                ),
+                "subtext": (
+                    f"{nome_grupo} — "
+                    "Intervalo mínimo-máximo e média"
+                ),
+                "left": "center",
+                "top": "2%",
+                "textStyle": {
+                    "fontSize": 17
+                }
+            },
+
+            "tooltip": {
+                "trigger": "item",
+
+                "formatter": JsCode("""
+                    function(params) {
+
+                        const v = params.value;
+
+                        return (
+                            params.name +
+                            '<br>Mínimo: ' +
+                            Number(v[1]).toFixed(2).replace('.', ',') +
+                            '<br>Média: ' +
+                            Number(v[3]).toFixed(2).replace('.', ',') +
+                            '<br>Máximo: ' +
+                            Number(v[2]).toFixed(2).replace('.', ',')
+                        );
+                    }
+                """)
+            },
+
+            "grid": {
+                "left": "10%",
+                "right": "5%",
+                "bottom": "15%",
+                "top": "22%",
+                "containLabel": True
+            },
+
+            "xAxis": {
+                "type": "category",
+                "name": "Arquivo",
+                "data": nomes_arquivos,
+                "axisLabel": {
+                    "rotate": 15,
+                    "interval": 0,
+                    "fontSize": 10
+                },
+                "splitLine": {
+                    "show": False
+                }
+            },
+
+            "yAxis": {
+                "type": "value",
+                "name": variavel_selecionada,
+                "splitLine": {
+                    "show": False
+                }
+            },
+
+            "series": [
+
+                {
+                    "name": "Intervalo e média",
+                    "type": "custom",
+
+                    "renderItem": JsCode("""
+                        function(params, api) {
+
+                            const indice = api.value(0);
+
+                            const minimo = api.value(1);
+                            const maximo = api.value(2);
+                            const media = api.value(3);
+
+                            const pontoMin = api.coord([
+                                indice,
+                                minimo
+                            ]);
+
+                            const pontoMax = api.coord([
+                                indice,
+                                maximo
+                            ]);
+
+                            const pontoMedia = api.coord([
+                                indice,
+                                media
+                            ]);
+
+                            const x = pontoMedia[0];
+
+                            const yMin = pontoMin[1];
+                            const yMax = pontoMax[1];
+                            const yMedia = pontoMedia[1];
+
+                            const largura = 12;
+
+                            return {
+
+                                type: 'group',
+
+                                children: [
+
+                                    // Linha do intervalo
+                                    {
+                                        type: 'line',
+
+                                        shape: {
+                                            x1: x,
+                                            y1: yMin,
+                                            x2: x,
+                                            y2: yMax
+                                        },
+
+                                        style: {
+                                            stroke: '#702082',
+                                            lineWidth: 5
+                                        }
+                                    },
+
+                                    // Limite mínimo
+                                    {
+                                        type: 'line',
+
+                                        shape: {
+                                            x1: x - largura,
+                                            y1: yMin,
+                                            x2: x + largura,
+                                            y2: yMin
+                                        },
+
+                                        style: {
+                                            stroke: '#702082',
+                                            lineWidth: 2
+                                        }
+                                    },
+
+                                    // Limite máximo
+                                    {
+                                        type: 'line',
+
+                                        shape: {
+                                            x1: x - largura,
+                                            y1: yMax,
+                                            x2: x + largura,
+                                            y2: yMax
+                                        },
+
+                                        style: {
+                                            stroke: '#702082',
+                                            lineWidth: 2
+                                        }
+                                    },
+
+                                    // Média
+                                    {
+                                        type: 'circle',
+
+                                        shape: {
+                                            cx: x,
+                                            cy: yMedia,
+                                            r: 7
+                                        },
+
+                                        style: {
+                                            fill: '#008848',
+                                            stroke: '#ffffff',
+                                            lineWidth: 1
+                                        }
+                                    }
+
+                                ]
+                            };
+                        }
+                    """),
+
+                    "encode": {
+                        "x": 0,
+                        "y": [1, 2, 3]
+                    },
+
+                    "data": dados_grafico
+
+                }
+
+            ]
+
+        }
+
+        st_echarts(
+            options=opcoes_intervalos,
+            height="440px",
+            key=f"comparacao_intervalos_{chave}"
+        )
+
+        st.caption(
+            "A barra vertical representa o intervalo entre o "
+            "mínimo e o máximo. O marcador verde representa a média."
+        )
+
+    # =========================================================
+    # 4. COMPARAÇÃO FTP
+    # =========================================================
+
+    if arquivos_ftp:
+
+        with st.expander(
+            "Comparação dos ensaios FTP",
+            expanded=True
+        ):
+
+            registros_ftp = processar_arquivos(
+                arquivos_ftp,
+                prefixo="f"
+            )
+
+            exibir_comparacao(
+                registros_ftp,
+                nome_grupo="FTP",
+                prefixo="f",
+                chave="ftp"
+            )
+
+    # =========================================================
+    # 5. COMPARAÇÃO HIGHWAY
+    # =========================================================
+
+    if arquivos_hgw:
+
+        with st.expander(
+            "Comparação dos ensaios Highway",
+            expanded=True
+        ):
+
+            registros_hgw = processar_arquivos(
+                arquivos_hgw,
+                prefixo="h"
+            )
+
+            exibir_comparacao(
+                registros_hgw,
+                nome_grupo="Highway",
+                prefixo="h",
+                chave="highway"
+            )
+
+    # =========================================================
+    # 6. MENSAGEM CASO NÃO HAJA ARQUIVOS
+    # =========================================================
+
+    if not arquivos_ftp and not arquivos_hgw:
+
+        st.info(
+            "Selecione pelo menos um arquivo FTP ou Highway "
+            "para iniciar a comparação."
+        )
+
+
 
 # =======================================================================
 # 8. APLICAÇÃO PRINCIPAL
@@ -2229,10 +2765,17 @@ def main_app():
                 "e o arquivo com os dados Highway."
             )
 
-# =======================================================================
-# 9. CONTROLE DE FLUXO
-# =======================================================================
-if st.session_state["authenticated"]:
-    main_app()
-else:
-    check_login()
+
+    # -------------------------------------------------------------------
+    # MÓDULO 4: COMPARAÇÃO
+    # -------------------------------------------------------------------
+    elif pagina_selecionada == "⚖️ Comparação":
+    
+        renderizar_comparacao_arquivos()
+    # =======================================================================
+    # 9. CONTROLE DE FLUXO
+    # =======================================================================
+    if st.session_state["authenticated"]:
+        main_app()
+    else:
+        check_login()
