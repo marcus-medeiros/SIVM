@@ -132,7 +132,7 @@ def check_login():
         senha = st.text_input("🔑 Senha", type="password", placeholder="admin")
 
         if st.button("Entrar", use_container_width=True):
-            if usuario == "admin" and senha == "admin":
+            if usuario == "ITEMM" and senha == "lobos":
                 st.session_state["authenticated"] = True
                 st.rerun()
             else:
