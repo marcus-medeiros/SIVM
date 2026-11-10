@@ -1876,12 +1876,13 @@ def renderizar_analise_estatistica(arquivo_1, arquivo_2):
 
 
 
+
 def renderizar_comparacao_arquivos():
 
     """
     Compara até três arquivos FTP e três arquivos Highway.
 
-    Condições disponíveis:
+    Condições:
         - Todas as amostras
         - Boost
         - Alternador
@@ -1890,12 +1891,16 @@ def renderizar_comparacao_arquivos():
 
     Indicadores:
         - Mínimo
+        - Q1 (P25)
+        - Mediana (P50)
         - Média
+        - Q3 (P75)
         - Máximo
         - Quantidade de amostras
 
-    Apresenta tabela estatística e gráfico de intervalos,
-    com os valores mínimo, médio e máximo identificados.
+    Gráfico:
+        - Boxplot com mínimo e máximo nos extremos
+        - Média destacada por marcador laranja
     """
 
     st.title("Comparação de Ensaios")
@@ -1912,7 +1917,6 @@ def renderizar_comparacao_arquivos():
     col_ftp, col_hgw = st.columns(2)
 
     with col_ftp:
-
         st.subheader("Arquivos FTP")
 
         arquivos_ftp = st.file_uploader(
@@ -1923,7 +1927,6 @@ def renderizar_comparacao_arquivos():
         )
 
     with col_hgw:
-
         st.subheader("Arquivos Highway")
 
         arquivos_hgw = st.file_uploader(
@@ -1937,21 +1940,17 @@ def renderizar_comparacao_arquivos():
     arquivos_hgw = list(arquivos_hgw or [])
 
     if len(arquivos_ftp) > 3:
-
         st.warning(
             "Foram selecionados mais de três arquivos FTP. "
             "Somente os três primeiros serão utilizados."
         )
-
         arquivos_ftp = arquivos_ftp[:3]
 
     if len(arquivos_hgw) > 3:
-
         st.warning(
             "Foram selecionados mais de três arquivos Highway. "
             "Somente os três primeiros serão utilizados."
         )
-
         arquivos_hgw = arquivos_hgw[:3]
 
     st.divider()
@@ -1972,10 +1971,13 @@ def renderizar_comparacao_arquivos():
     # 3. PROCESSAMENTO DOS ARQUIVOS
     # =========================================================
 
-    def processar_arquivos(arquivos, prefixo, condicao_selecionada):
+    def processar_arquivos(
+        arquivos,
+        prefixo,
+        condicao_selecionada
+    ):
 
         registros = []
-
         total_ignoradas = 0
 
         for arquivo in arquivos:
@@ -1987,11 +1989,9 @@ def renderizar_comparacao_arquivos():
                 dados = carregar_arquivo_mat(arquivo)
 
                 if not isinstance(dados, dict) or not dados:
-
                     st.warning(
                         f"Não foi possível carregar {arquivo.name}."
                     )
-
                     continue
 
                 # -------------------------------------------------
@@ -2009,12 +2009,9 @@ def renderizar_comparacao_arquivos():
                     if nome_condicao not in dados:
 
                         st.warning(
-                            f"{arquivo.name}: a variável "
-                            f"{nome_condicao} não foi encontrada. "
-                            "Esse arquivo não será utilizado "
-                            "nesta condição."
+                            f"{arquivo.name}: variável "
+                            f"{nome_condicao} não encontrada."
                         )
-
                         continue
 
                     try:
@@ -2035,7 +2032,6 @@ def renderizar_comparacao_arquivos():
                             f"Não foi possível interpretar "
                             f"{nome_condicao} em {arquivo.name}."
                         )
-
                         continue
 
                     if not np.any(mascara_condicao):
@@ -2044,7 +2040,6 @@ def renderizar_comparacao_arquivos():
                             f"{arquivo.name}: não existem amostras "
                             "válidas para a condição selecionada."
                         )
-
                         continue
 
                 # -------------------------------------------------
@@ -2057,17 +2052,8 @@ def renderizar_comparacao_arquivos():
                     and not nome.startswith(f"{prefixo}condicao_")
                 ]
 
-                if not variaveis:
-
-                    st.warning(
-                        f"Nenhuma variável numérica encontrada "
-                        f"em {arquivo.name}."
-                    )
-
-                    continue
-
                 # -------------------------------------------------
-                # PROCESSAMENTO INDIVIDUAL DAS VARIÁVEIS
+                # PROCESSAMENTO INDIVIDUAL
                 # -------------------------------------------------
 
                 for nome_variavel in variaveis:
@@ -2082,24 +2068,16 @@ def renderizar_comparacao_arquivos():
                         if valores.size == 0:
                             continue
 
-                        # Aplicação da condição operacional
+                        # Aplicação da condição
                         if mascara_condicao is not None:
 
-                            # Os sinais precisam ter o mesmo
-                            # número de amostras da condição.
                             if len(valores) != len(mascara_condicao):
-
                                 total_ignoradas += 1
                                 continue
 
                             valores = valores[mascara_condicao]
 
-                        else:
-
-                            valores = valores[
-                                np.isfinite(valores)
-                            ]
-
+                        # Remover valores inválidos
                         valores = valores[
                             np.isfinite(valores)
                         ]
@@ -2107,9 +2085,11 @@ def renderizar_comparacao_arquivos():
                         if valores.size == 0:
                             continue
 
-                        # -----------------------------------------
-                        # CÁLCULOS ESTATÍSTICOS
-                        # -----------------------------------------
+                        # Cálculo dos quartis
+                        q1, mediana, q3 = np.percentile(
+                            valores,
+                            [25, 50, 75]
+                        )
 
                         registros.append({
 
@@ -2123,7 +2103,13 @@ def renderizar_comparacao_arquivos():
 
                             "Mínimo": float(np.min(valores)),
 
+                            "Q1": float(q1),
+
+                            "Mediana": float(mediana),
+
                             "Média": float(np.mean(valores)),
+
+                            "Q3": float(q3),
 
                             "Máximo": float(np.max(valores))
 
@@ -2141,9 +2127,9 @@ def renderizar_comparacao_arquivos():
         if total_ignoradas > 0 and condicao_selecionada is not None:
 
             st.info(
-                f"{total_ignoradas} variável(is) foram ignoradas "
-                "porque não possuem o mesmo número de amostras "
-                "da máscara de condição selecionada."
+                f"{total_ignoradas} variável(is) ignoradas por "
+                "diferença no número de amostras em relação "
+                "à máscara da condição."
             )
 
         return registros
@@ -2165,7 +2151,6 @@ def renderizar_comparacao_arquivos():
                 f"Não existem dados suficientes para a comparação "
                 f"de {nome_grupo} na condição selecionada."
             )
-
             return
 
         df = pd.DataFrame(registros)
@@ -2193,7 +2178,10 @@ def renderizar_comparacao_arquivos():
         st.dataframe(
             df.style.format({
                 "Mínimo": "{:.2f}",
+                "Q1": "{:.2f}",
+                "Mediana": "{:.2f}",
                 "Média": "{:.2f}",
+                "Q3": "{:.2f}",
                 "Máximo": "{:.2f}"
             }),
             use_container_width=True,
@@ -2206,7 +2194,7 @@ def renderizar_comparacao_arquivos():
 
         st.divider()
 
-        st.subheader("Comparação dos intervalos")
+        st.subheader("Distribuição e comparação dos ensaios")
 
         variaveis = sorted(
             df["Variável"].unique().tolist()
@@ -2223,78 +2211,93 @@ def renderizar_comparacao_arquivos():
         ].reset_index(drop=True)
 
         if df_grafico.empty:
-
             st.warning(
                 "Não existem dados disponíveis para essa variável."
             )
-
             return
 
         # -----------------------------------------------------
-        # DADOS DO GRÁFICO
+        # DADOS DO BOXPLOT
         # -----------------------------------------------------
 
-        nomes_arquivos = df_grafico[
-            "Arquivo"
-        ].tolist()
+        nomes_arquivos = df_grafico["Arquivo"].tolist()
 
-        dados_grafico = []
+        dados_boxplot = []
+        dados_media = []
+        dados_minimo = []
+        dados_maximo = []
 
-        for indice, linha in df_grafico.iterrows():
+        for _, linha in df_grafico.iterrows():
 
-            dados_grafico.append({
+            # Formato ECharts:
+            # [mínimo, Q1, mediana, Q3, máximo]
 
-                "name": str(linha["Arquivo"]),
+            dados_boxplot.append([
+                float(linha["Mínimo"]),
+                float(linha["Q1"]),
+                float(linha["Mediana"]),
+                float(linha["Q3"]),
+                float(linha["Máximo"])
+            ])
 
-                "value": [
-                    int(indice),
-                    float(linha["Mínimo"]),
-                    float(linha["Máximo"]),
-                    float(linha["Média"]),
-                    int(linha["Amostras"])
-                ]
+            dados_media.append([
+                linha["Arquivo"],
+                float(linha["Média"])
+            ])
 
-            })
+            dados_minimo.append([
+                linha["Arquivo"],
+                float(linha["Mínimo"])
+            ])
+
+            dados_maximo.append([
+                linha["Arquivo"],
+                float(linha["Máximo"])
+            ])
 
         # -----------------------------------------------------
-        # MARGEM AUTOMÁTICA DO EIXO Y
+        # LIMITES DO EIXO Y
         # -----------------------------------------------------
 
-        valor_minimo_global = float(
-            df_grafico["Mínimo"].min()
-        )
+        valor_minimo = float(df_grafico["Mínimo"].min())
+        valor_maximo = float(df_grafico["Máximo"].max())
 
-        valor_maximo_global = float(
-            df_grafico["Máximo"].max()
-        )
-
-        amplitude_global = (
-            valor_maximo_global - valor_minimo_global
-        )
+        amplitude = valor_maximo - valor_minimo
 
         margem = max(
-            amplitude_global * 0.15,
-            abs(valor_minimo_global) * 0.03,
-            abs(valor_maximo_global) * 0.03,
+            amplitude * 0.15,
+            abs(valor_minimo) * 0.03,
+            abs(valor_maximo) * 0.03,
             0.01
         )
 
-        limite_inferior = valor_minimo_global - margem
-        limite_superior = valor_maximo_global + margem
+        limite_inferior = valor_minimo - margem
+        limite_superior = valor_maximo + margem
 
         # -----------------------------------------------------
-        # GRÁFICO DE INTERVALOS
+        # FORMATADORES
         # -----------------------------------------------------
 
-        opcoes_intervalos = {
+        formatador = JsCode("""
+            function(params) {
+                return Number(params.value[1])
+                    .toFixed(2)
+                    .replace('.', ',');
+            }
+        """).js_code
+
+        # -----------------------------------------------------
+        # CONFIGURAÇÃO DO BOXPLOT
+        # -----------------------------------------------------
+
+        opcoes_boxplot = {
 
             "title": {
 
                 "text": f"Comparação de {variavel_selecionada}",
 
                 "subtext": (
-                    f"{nome_grupo} — {condicao_nome} | "
-                    "Mínimo, média e máximo"
+                    f"{nome_grupo} — {condicao_nome}"
                 ),
 
                 "left": "center",
@@ -2320,25 +2323,50 @@ def renderizar_comparacao_arquivos():
 
                         const v = params.value;
 
+                        if (params.seriesType === 'boxplot') {
+
+                            return (
+                                '<b>' + params.name + '</b>' +
+                                '<br>Máximo: ' +
+                                Number(v[4]).toFixed(2).replace('.', ',') +
+                                '<br>Q3: ' +
+                                Number(v[3]).toFixed(2).replace('.', ',') +
+                                '<br>Mediana: ' +
+                                Number(v[2]).toFixed(2).replace('.', ',') +
+                                '<br>Q1: ' +
+                                Number(v[1]).toFixed(2).replace('.', ',') +
+                                '<br>Mínimo: ' +
+                                Number(v[0]).toFixed(2).replace('.', ',')
+                            );
+
+                        }
+
                         return (
                             '<b>' + params.name + '</b>' +
-                            '<br>Mínimo: ' +
-                            Number(v[1]).toFixed(2).replace('.', ',') +
-                            '<br>Média: ' +
-                            Number(v[3]).toFixed(2).replace('.', ',') +
-                            '<br>Máximo: ' +
-                            Number(v[2]).toFixed(2).replace('.', ',') +
-                            '<br>Amostras: ' + v[4]
+                            '<br>' + params.seriesName + ': ' +
+                            Number(v[1]).toFixed(2).replace('.', ',')
                         );
                     }
                 """).js_code
             },
 
+            "legend": {
+
+                "top": "12%",
+
+                "data": [
+                    "Distribuição",
+                    "Média",
+                    "Mínimo",
+                    "Máximo"
+                ]
+            },
+
             "grid": {
 
                 "left": "12%",
-                "right": "8%",
-                "bottom": "18%",
+                "right": "12%",
+                "bottom": "15%",
                 "top": "24%",
                 "containLabel": True
             },
@@ -2347,9 +2375,13 @@ def renderizar_comparacao_arquivos():
 
                 "type": "category",
 
+                "data": nomes_arquivos,
+
                 "name": "Arquivo",
 
-                "data": nomes_arquivos,
+                "nameLocation": "middle",
+
+                "nameGap": 45,
 
                 "axisLabel": {
                     "rotate": 15,
@@ -2369,12 +2401,15 @@ def renderizar_comparacao_arquivos():
                 "name": variavel_selecionada,
 
                 "min": limite_inferior,
+
                 "max": limite_superior,
 
                 "axisLabel": {
                     "formatter": JsCode("""
                         function(value) {
-                            return Number(value).toFixed(2).replace('.', ',');
+                            return Number(value)
+                                .toFixed(2)
+                                .replace('.', ',');
                         }
                     """).js_code
                 },
@@ -2386,221 +2421,158 @@ def renderizar_comparacao_arquivos():
 
             "series": [
 
+                # =============================================
+                # BOXPLOT
+                # =============================================
+
                 {
 
-                    "name": "Intervalo e média",
+                    "name": "Distribuição",
 
-                    "type": "custom",
+                    "type": "boxplot",
 
-                    "renderItem": JsCode("""
-                        function(params, api) {
+                    "data": dados_boxplot,
 
-                            const indice = api.value(0);
+                    "itemStyle": {
 
-                            const minimo = api.value(1);
-                            const maximo = api.value(2);
-                            const media = api.value(3);
+                        "color": "#DDE7FA",
 
-                            // Coordenadas dos valores
-                            const pontoMin = api.coord([
-                                indice,
-                                minimo
-                            ]);
+                        "borderColor": "#4b7bec",
 
-                            const pontoMax = api.coord([
-                                indice,
-                                maximo
-                            ]);
-
-                            const pontoMedia = api.coord([
-                                indice,
-                                media
-                            ]);
-
-                            const x = pontoMedia[0];
-
-                            const yMin = pontoMin[1];
-                            const yMax = pontoMax[1];
-                            const yMedia = pontoMedia[1];
-
-                            const largura = 12;
-
-                            // Formatação decimal brasileira
-                            const formatar = function(valor) {
-                                return Number(valor)
-                                    .toFixed(2)
-                                    .replace('.', ',');
-                            };
-
-                            return {
-
-                                type: 'group',
-
-                                children: [
-
-                                    // =================================
-                                    // BARRA DO INTERVALO
-                                    // =================================
-
-                                    {
-                                        type: 'line',
-
-                                        shape: {
-                                            x1: x,
-                                            y1: yMin,
-                                            x2: x,
-                                            y2: yMax
-                                        },
-
-                                        style: {
-                                            stroke: '#4b7bec',
-                                            lineWidth: 5
-                                        }
-                                    },
-
-                                    // =================================
-                                    // LIMITE MÍNIMO
-                                    // =================================
-
-                                    {
-                                        type: 'line',
-
-                                        shape: {
-                                            x1: x - largura,
-                                            y1: yMin,
-                                            x2: x + largura,
-                                            y2: yMin
-                                        },
-
-                                        style: {
-                                            stroke: '#4b7bec',
-                                            lineWidth: 2
-                                        }
-                                    },
-
-                                    // =================================
-                                    // LIMITE MÁXIMO
-                                    // =================================
-
-                                    {
-                                        type: 'line',
-
-                                        shape: {
-                                            x1: x - largura,
-                                            y1: yMax,
-                                            x2: x + largura,
-                                            y2: yMax
-                                        },
-
-                                        style: {
-                                            stroke: '#4b7bec',
-                                            lineWidth: 2
-                                        }
-                                    },
-
-                                    // =================================
-                                    // MARCADOR DA MÉDIA
-                                    // =================================
-
-                                    {
-                                        type: 'circle',
-
-                                        shape: {
-                                            cx: x,
-                                            cy: yMedia,
-                                            r: 7
-                                        },
-
-                                        style: {
-                                            fill: '#f39200',
-                                            stroke: '#ffffff',
-                                            lineWidth: 1
-                                        }
-                                    },
-
-                                    // =================================
-                                    // RÓTULO DO MÁXIMO
-                                    // =================================
-
-                                    {
-                                        type: 'text',
-
-                                        style: {
-
-                                            x: x,
-                                            y: yMax - 10,
-
-                                            text: 'Máx: ' + formatar(maximo),
-
-                                            fill: '#4b7bec',
-
-                                            font: 'bold 11px sans-serif',
-
-                                            textAlign: 'center',
-
-                                            textVerticalAlign: 'bottom'
-                                        }
-                                    },
-
-                                    // =================================
-                                    // RÓTULO DO MÍNIMO
-                                    // =================================
-
-                                    {
-                                        type: 'text',
-
-                                        style: {
-
-                                            x: x,
-                                            y: yMin + 10,
-
-                                            text: 'Mín: ' + formatar(minimo),
-
-                                            fill: '#4b7bec',
-
-                                            font: 'bold 11px sans-serif',
-
-                                            textAlign: 'center',
-
-                                            textVerticalAlign: 'top'
-                                        }
-                                    },
-
-                                    // =================================
-                                    // RÓTULO DA MÉDIA
-                                    // =================================
-
-                                    {
-                                        type: 'text',
-
-                                        style: {
-
-                                            x: x + 12,
-                                            y: yMedia,
-
-                                            text: 'Média: ' + formatar(media),
-
-                                            fill: '#f39200',
-
-                                            font: 'bold 11px sans-serif',
-
-                                            textAlign: 'left',
-
-                                            textVerticalAlign: 'middle'
-                                        }
-                                    }
-
-                                ]
-                            };
-                        }
-                    """).js_code,
-
-                    "encode": {
-                        "x": 0,
-                        "y": [1, 2, 3]
+                        "borderWidth": 2
                     },
 
-                    "data": dados_grafico
+                    "boxWidth": [25, 55]
+
+                },
+
+                # =============================================
+                # MÉDIA
+                # =============================================
+
+                {
+
+                    "name": "Média",
+
+                    "type": "scatter",
+
+                    "data": dados_media,
+
+                    "symbol": "circle",
+
+                    "symbolSize": 11,
+
+                    "itemStyle": {
+                        "color": "#f39200",
+                        "borderColor": "#ffffff",
+                        "borderWidth": 1
+                    },
+
+                    "label": {
+
+                        "show": True,
+
+                        "position": "right",
+
+                        "formatter": JsCode("""
+                            function(params) {
+                                return 'Média: ' +
+                                    Number(params.value[1])
+                                    .toFixed(2)
+                                    .replace('.', ',');
+                            }
+                        """).js_code,
+
+                        "color": "#f39200",
+
+                        "fontSize": 10,
+
+                        "fontWeight": "bold"
+                    }
+
+                },
+
+                # =============================================
+                # MÍNIMO
+                # =============================================
+
+                {
+
+                    "name": "Mínimo",
+
+                    "type": "scatter",
+
+                    "data": dados_minimo,
+
+                    "symbolSize": 3,
+
+                    "itemStyle": {
+                        "opacity": 0
+                    },
+
+                    "label": {
+
+                        "show": True,
+
+                        "position": "bottom",
+
+                        "formatter": JsCode("""
+                            function(params) {
+                                return 'Mín: ' +
+                                    Number(params.value[1])
+                                    .toFixed(2)
+                                    .replace('.', ',');
+                            }
+                        """).js_code,
+
+                        "color": "#4b7bec",
+
+                        "fontSize": 10,
+
+                        "fontWeight": "bold"
+                    }
+
+                },
+
+                # =============================================
+                # MÁXIMO
+                # =============================================
+
+                {
+
+                    "name": "Máximo",
+
+                    "type": "scatter",
+
+                    "data": dados_maximo,
+
+                    "symbolSize": 3,
+
+                    "itemStyle": {
+                        "opacity": 0
+                    },
+
+                    "label": {
+
+                        "show": True,
+
+                        "position": "top",
+
+                        "formatter": JsCode("""
+                            function(params) {
+                                return 'Máx: ' +
+                                    Number(params.value[1])
+                                    .toFixed(2)
+                                    .replace('.', ',');
+                            }
+                        """).js_code,
+
+                        "color": "#4b7bec",
+
+                        "fontSize": 10,
+
+                        "fontWeight": "bold"
+                    }
 
                 }
 
@@ -2609,33 +2581,35 @@ def renderizar_comparacao_arquivos():
         }
 
         st_echarts(
-            options=opcoes_intervalos,
-            height="480px",
-            key=f"comparacao_intervalos_{chave}"
+            options=opcoes_boxplot,
+            height="520px",
+            key=f"comparacao_boxplot_{chave}"
         )
 
         # -----------------------------------------------------
-        # LEGENDA
+        # LEGENDA EXPLICATIVA
         # -----------------------------------------------------
 
         st.markdown(
             """
             <div style="
                 display: flex;
-                gap: 24px;
+                gap: 22px;
                 flex-wrap: wrap;
                 justify-content: center;
-                margin-top: 8px;
+                margin-top: 5px;
                 font-size: 13px;
             ">
-                <span>
-                    <span style="color:#4b7bec;">●</span>
-                    Intervalo mínimo–máximo
+                <span style="color:#4b7bec;">
+                    ■ Q1 até Q3 — intervalo interquartil
                 </span>
 
-                <span>
-                    <span style="color:#f39200;">●</span>
-                    Média
+                <span style="color:#f39200;">
+                    ● Média
+                </span>
+
+                <span style="color:#4b7bec;">
+                    ━ Mínimo e máximo
                 </span>
             </div>
             """,
