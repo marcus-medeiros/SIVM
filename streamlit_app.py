@@ -1883,10 +1883,14 @@ def main_app():
         st.markdown("<h2 style='color: #ce4545; text-align: center;'>- LOBOS ELETRIFICADOS -</h2>", unsafe_allow_html=True)
 
         # Menu de navegação
-        pagina_selecionada = st.radio(
-            "Selecione o Módulo:",
-            options=["📈 Telemetria", "📊 Estatística", "📉 Análise"],
-            index=0
+        pagina_selecionada = st.sidebar.radio(
+            "Navegação",
+            [
+                "📈 Telemetria",
+                "📊 Estatística",
+                "📉 Análise",
+                "⚖️ Comparação"
+            ]
         )
         st.markdown("---")
         st.markdown("### 📂 Upload de Arquivos .mat")
