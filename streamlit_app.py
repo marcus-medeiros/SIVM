@@ -1880,7 +1880,7 @@ def renderizar_analise_estatistica(arquivo_1, arquivo_2):
 # =======================================================================
 def main_app():
     with st.sidebar:
-        st.markdown("<h2 style='color: #ce4545; text-align: center;'>- SIVM -</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='color: #ce4545; text-align: center;'>- LOBOS ELETRIFICADOS -</h2>", unsafe_allow_html=True)
 
         # Menu de navegação
         pagina_selecionada = st.radio(
