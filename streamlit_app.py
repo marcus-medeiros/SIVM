@@ -2350,7 +2350,7 @@ def renderizar_comparacao_arquivos():
 
                     "label": {
 
-                        "show": len(registros) <= 5,
+                        "show": True,
 
                         "position": "top",
 
