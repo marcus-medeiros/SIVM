@@ -2132,6 +2132,516 @@ def renderizar_comparacao_arquivos():
 
         return registros
 
+    
+    #
+    # =========================================================
+    # 4. GRÁFICOS DE PERCENTUAL E CAPACIDADE DOS MODOS
+    # =========================================================
+
+    def exibir_graficos_modos(arquivos, prefixo, chave):
+
+        modos = [
+            {
+                "nome": "Boost",
+                "percentual": "por_boost",
+                "condicao": "condicao_boo",
+                "capacidade": "Capacidade_boost",
+                "cor": COR_BOOST
+            },
+            {
+                "nome": "Neutro / Cargas auxiliares",
+                "percentual": "por_idle",
+                "condicao": "condicao_neu",
+                "capacidade": "Capacidade_auxiliares",
+                "cor": COR_NEUTRO
+            },
+            {
+                "nome": "Alternador",
+                "percentual": "por_alternador",
+                "condicao": "condicao_alt",
+                "capacidade": "Capacidade_alternador",
+                "cor": COR_ALTERNADOR
+            },
+            {
+                "nome": "Frenagem regenerativa",
+                "percentual": "por_frenagem",
+                "condicao": "condicao_fre",
+                "capacidade": "Capacidade_frenagem",
+                "cor": COR_REGEN
+            }
+        ]
+
+        def obter_escalar(dados, nome):
+
+            bruto = dados.get(nome)
+
+            if bruto is None:
+                return None
+
+            try:
+
+                valores = np.asarray(
+                    bruto,
+                    dtype=float
+                ).ravel()
+
+                valores = valores[
+                    np.isfinite(valores)
+                ]
+
+                if valores.size == 0:
+                    return None
+
+                return float(valores[0])
+
+            except (TypeError, ValueError):
+                return None
+
+        registros = []
+
+        # -----------------------------------------------------
+        # EXTRAÇÃO DOS INDICADORES DE CADA ARQUIVO
+        # -----------------------------------------------------
+
+        for arquivo in arquivos:
+
+            try:
+
+                arquivo.seek(0)
+
+                dados = carregar_arquivo_mat(arquivo)
+
+                if not dados:
+                    continue
+
+                registro = {
+                    "Arquivo": arquivo.name,
+                    "Percentuais": {},
+                    "Capacidades": {}
+                }
+
+                for modo in modos:
+
+                    nome_percentual = (
+                        f"{prefixo}{modo['percentual']}"
+                    )
+
+                    nome_condicao = (
+                        f"{prefixo}{modo['condicao']}"
+                    )
+
+                    nome_capacidade = (
+                        f"{prefixo}{modo['capacidade']}"
+                    )
+
+                    # -----------------------------------------
+                    # PERCENTUAL DO MODO
+                    # -----------------------------------------
+
+                    percentual = obter_escalar(
+                        dados,
+                        nome_percentual
+                    )
+
+                    # Se o percentual salvo não existir,
+                    # calcula pela quantidade de amostras da condição.
+                    if percentual is None:
+
+                        serie_condicao = dados.get(nome_condicao)
+
+                        if serie_condicao is not None:
+
+                            try:
+
+                                serie_condicao = np.asarray(
+                                    serie_condicao,
+                                    dtype=float
+                                ).ravel()
+
+                                validos = serie_condicao[
+                                    np.isfinite(serie_condicao)
+                                ]
+
+                                if validos.size > 0:
+
+                                    percentual = (
+                                        np.sum(validos > 0)
+                                        / validos.size
+                                    ) * 100
+
+                            except (TypeError, ValueError):
+                                percentual = None
+
+                    registro["Percentuais"][
+                        modo["nome"]
+                    ] = percentual
+
+                    # -----------------------------------------
+                    # CAPACIDADE DO MODO (Ah)
+                    # -----------------------------------------
+
+                    capacidade = obter_escalar(
+                        dados,
+                        nome_capacidade
+                    )
+
+                    registro["Capacidades"][
+                        modo["nome"]
+                    ] = capacidade
+
+                registros.append(registro)
+
+            except Exception as erro:
+
+                st.warning(
+                    f"Erro ao extrair indicadores de "
+                    f"{arquivo.name}: {erro}"
+                )
+
+        if not registros:
+            st.warning(
+                "Não foram encontrados indicadores de modos "
+                "operacionais nos arquivos selecionados."
+            )
+            return
+
+        nomes_arquivos = [
+            registro["Arquivo"]
+            for registro in registros
+        ]
+
+        # -----------------------------------------------------
+        # FUNÇÃO PARA MONTAR AS SÉRIES ECHARTS
+        # -----------------------------------------------------
+
+        def montar_series(tipo):
+
+            series = []
+
+            for modo in modos:
+
+                if tipo == "percentual":
+
+                    dados_serie = [
+                        registro["Percentuais"][modo["nome"]]
+                        for registro in registros
+                    ]
+
+                else:
+
+                    dados_serie = [
+                        registro["Capacidades"][modo["nome"]]
+                        for registro in registros
+                    ]
+
+                series.append({
+
+                    "name": modo["nome"],
+
+                    "type": "bar",
+
+                    "data": dados_serie,
+
+                    "barMaxWidth": 28,
+
+                    "itemStyle": {
+                        "color": modo["cor"]
+                    },
+
+                    "label": {
+
+                        "show": len(registros) <= 5,
+
+                        "position": "top",
+
+                        "formatter": JsCode("""
+                            function(params) {
+
+                                if (
+                                    params.value === null ||
+                                    params.value === undefined
+                                ) {
+                                    return '';
+                                }
+
+                                return Number(params.value)
+                                    .toFixed(2)
+                                    .replace('.', ',');
+                            }
+                        """).js_code,
+
+                        "fontSize": 9
+
+                    }
+
+                })
+
+            return series
+
+        # =====================================================
+        # 1. GRÁFICO DE PERCENTUAL DOS MODOS
+        # =====================================================
+
+        possui_percentuais = any(
+            valor is not None
+            for registro in registros
+            for valor in registro["Percentuais"].values()
+        )
+
+        if possui_percentuais:
+
+            st.subheader(
+                "Distribuição percentual dos modos operacionais"
+            )
+
+            opcoes_percentuais = {
+
+                "title": {
+
+                    "text": "Percentual por modo operacional",
+
+                    "subtext": "Comparação entre os arquivos analisados",
+
+                    "left": "center",
+
+                    "top": "2%",
+
+                    "textStyle": {
+                        "fontSize": 16
+                    }
+
+                },
+
+                "tooltip": {
+
+                    "trigger": "axis",
+
+                    "axisPointer": {
+                        "type": "shadow"
+                    },
+
+                    "valueFormatter": JsCode("""
+                        function(value) {
+
+                            if (value == null) {
+                                return 'N/D';
+                            }
+
+                            return Number(value)
+                                .toFixed(2)
+                                .replace('.', ',') + '%';
+                        }
+                    """).js_code
+
+                },
+
+                "legend": {
+
+                    "top": "13%",
+
+                    "data": [
+                        modo["nome"] for modo in modos
+                    ]
+
+                },
+
+                "grid": {
+
+                    "left": "8%",
+                    "right": "5%",
+                    "bottom": "25%",
+                    "top": "25%",
+                    "containLabel": True
+
+                },
+
+                "xAxis": {
+
+                    "type": "category",
+
+                    "data": nomes_arquivos,
+
+                    "axisLabel": {
+                        "rotate": 35,
+                        "interval": 0,
+                        "fontSize": 9
+                    },
+
+                    "splitLine": {
+                        "show": False
+                    }
+
+                },
+
+                "yAxis": {
+
+                    "type": "value",
+
+                    "name": "Participação (%)",
+
+                    "axisLabel": {
+                        "formatter": "{value}%"
+                    },
+
+                    "splitLine": {
+                        "show": False
+                    }
+
+                },
+
+                "series": montar_series("percentual")
+
+            }
+
+            st_echarts(
+                options=opcoes_percentuais,
+                height="500px",
+                key=f"comparacao_percentuais_modos_{chave}"
+            )
+
+        else:
+
+            st.warning(
+                "Não foram encontrados dados de percentual "
+                "dos modos operacionais."
+            )
+
+        # =====================================================
+        # 2. GRÁFICO DE CAPACIDADE DOS MODOS
+        # =====================================================
+
+        possui_capacidades = any(
+            valor is not None
+            for registro in registros
+            for valor in registro["Capacidades"].values()
+        )
+
+        if possui_capacidades:
+
+            st.divider()
+
+            st.subheader(
+                "Capacidade elétrica por modo operacional"
+            )
+
+            opcoes_capacidades = {
+
+                "title": {
+
+                    "text": "Capacidade por modo operacional",
+
+                    "subtext": "Comparação das capacidades dos arquivos analisados",
+
+                    "left": "center",
+
+                    "top": "2%",
+
+                    "textStyle": {
+                        "fontSize": 16
+                    }
+
+                },
+
+                "tooltip": {
+
+                    "trigger": "axis",
+
+                    "axisPointer": {
+                        "type": "shadow"
+                    },
+
+                    "valueFormatter": JsCode("""
+                        function(value) {
+
+                            if (value == null) {
+                                return 'N/D';
+                            }
+
+                            return Number(value)
+                                .toFixed(2)
+                                .replace('.', ',') + ' Ah';
+                        }
+                    """).js_code
+
+                },
+
+                "legend": {
+
+                    "top": "13%",
+
+                    "data": [
+                        modo["nome"] for modo in modos
+                    ]
+
+                },
+
+                "grid": {
+
+                    "left": "10%",
+                    "right": "5%",
+                    "bottom": "25%",
+                    "top": "25%",
+                    "containLabel": True
+
+                },
+
+                "xAxis": {
+
+                    "type": "category",
+
+                    "data": nomes_arquivos,
+
+                    "axisLabel": {
+                        "rotate": 35,
+                        "interval": 0,
+                        "fontSize": 9
+                    },
+
+                    "splitLine": {
+                        "show": False
+                    }
+
+                },
+
+                "yAxis": {
+
+                    "type": "value",
+
+                    "name": "Capacidade (Ah)",
+
+                    "axisLabel": {
+                        "formatter": "{value} Ah"
+                    },
+
+                    "splitLine": {
+                        "show": False
+                    }
+
+                },
+
+                "series": montar_series("capacidade")
+
+            }
+
+            st_echarts(
+                options=opcoes_capacidades,
+                height="500px",
+                key=f"comparacao_capacidades_modos_{chave}"
+            )
+
+        else:
+
+            st.warning(
+                "Não foram encontrados dados de capacidade "
+                "dos modos operacionais."
+            )
+
+        st.caption(
+            "Os percentuais e as capacidades são indicadores globais "
+            "extraídos dos arquivos MAT. Eles não são recalculados "
+            "pelo filtro de condição aplicado ao boxplot."
+        )
+
     # =========================================================
     # 4. EXIBIÇÃO DA COMPARAÇÃO
     # =========================================================
@@ -2634,6 +3144,12 @@ def renderizar_comparacao_arquivos():
                 condicao_nome=condicao_ftp
             )
 
+            exibir_graficos_modos(
+            arquivos_ftp,
+            prefixo="f",
+            chave="ftp"
+            )
+
     # =========================================================
     # 6. COMPARAÇÃO HIGHWAY
     # =========================================================
@@ -2669,6 +3185,12 @@ def renderizar_comparacao_arquivos():
                 chave="highway",
 
                 condicao_nome=condicao_hgw
+            )
+
+            exibir_graficos_modos(
+            arquivos_hgw,
+            prefixo="h",
+            chave="highway"
             )
 
     # =========================================================
