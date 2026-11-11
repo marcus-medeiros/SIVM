@@ -2134,6 +2134,792 @@ def renderizar_comparacao_arquivos():
 
     
     #
+    
+    # =========================================================
+    # COMPARAÇÃO TEMPORAL DOS MODOS OPERACIONAIS
+    # =========================================================
+
+    def exibir_comparacao_temporal(arquivos, prefixo, chave):
+
+        st.divider()
+        st.subheader("Comparação Temporal dos Modos Operacionais")
+
+        if len(arquivos) < 2:
+            st.info(
+                "Selecione pelo menos dois arquivos para habilitar "
+                "a comparação temporal."
+            )
+            return
+
+        # -----------------------------------------------------
+        # 1. SELEÇÃO DOS DOIS ARQUIVOS
+        # -----------------------------------------------------
+
+        indices = list(range(len(arquivos)))
+
+        col_a, col_b = st.columns(2)
+
+        with col_a:
+            indice_a = st.selectbox(
+                "Primeiro arquivo:",
+                indices,
+                format_func=lambda i: arquivos[i].name,
+                key=f"temporal_arquivo_a_{chave}"
+            )
+
+        with col_b:
+            indice_b = st.selectbox(
+                "Segundo arquivo:",
+                indices,
+                format_func=lambda i: arquivos[i].name,
+                key=f"temporal_arquivo_b_{chave}"
+            )
+
+        if indice_a == indice_b:
+            st.warning("Selecione dois arquivos diferentes.")
+            return
+
+        arquivo_a = arquivos[indice_a]
+        arquivo_b = arquivos[indice_b]
+
+        # -----------------------------------------------------
+        # 2. CARREGAMENTO DOS DOIS ARQUIVOS
+        # -----------------------------------------------------
+
+        try:
+
+            arquivo_a.seek(0)
+            dados_a = carregar_arquivo_mat(arquivo_a)
+
+            arquivo_b.seek(0)
+            dados_b = carregar_arquivo_mat(arquivo_b)
+
+        except Exception as erro:
+
+            st.error(f"Erro ao carregar os arquivos: {erro}")
+            return
+
+        if not dados_a or not dados_b:
+            return
+
+        # -----------------------------------------------------
+        # 3. IDENTIFICAÇÃO DAS VARIÁVEIS COMUNS
+        # -----------------------------------------------------
+
+        def listar_variaveis_temporais(dados):
+
+            resultado = set()
+
+            for nome, valor in dados.items():
+
+                if not nome.startswith(prefixo):
+                    continue
+
+                sufixo = nome[len(prefixo):]
+
+                # Não disponibilizar condições como eixo direito
+                if sufixo.startswith("condicao"):
+                    continue
+
+                # Velocidade já é utilizada no eixo esquerdo
+                if sufixo == "Speed_com":
+                    continue
+
+                try:
+
+                    serie = np.asarray(
+                        valor,
+                        dtype=float
+                    ).ravel()
+
+                    if serie.size > 1 and np.isfinite(serie).sum() > 1:
+                        resultado.add(sufixo)
+
+                except (TypeError, ValueError):
+                    continue
+
+            return resultado
+
+        variaveis_a = listar_variaveis_temporais(dados_a)
+        variaveis_b = listar_variaveis_temporais(dados_b)
+
+        variaveis_comuns = sorted(
+            variaveis_a.intersection(variaveis_b)
+        )
+
+        if not variaveis_comuns:
+
+            st.warning(
+                "Os arquivos selecionados não possuem variáveis "
+                "temporais em comum para o eixo Y direito."
+            )
+            return
+
+        # -----------------------------------------------------
+        # 4. NOMES AMIGÁVEIS E UNIDADES
+        # -----------------------------------------------------
+
+        nomes_variaveis = {
+            "SOC_calc": "SOC",
+            "RPM_com": "Rotação do motor",
+            "LoadCarga_com": "Carga do motor",
+            "Throttle_com": "Pedal do acelerador",
+            "Aceleracao_com": "Aceleração",
+            "CorrenteBSG_com": "Corrente BSG",
+            "CorrenteFiltro": "Corrente da bateria",
+            "CorrenteConsumoExterno_com": "Corrente de cargas externas",
+            "TensaoBSG_com": "Tensão BSG",
+            "TensaoChumbo_com": "Tensão da bateria",
+            "TensaoAC1_norm": "Tensão AC1",
+            "TempBattery_com": "Temperatura da bateria",
+            "TempCatalisador_com": "Temperatura do catalisador",
+            "FluxoVolume_com": "Fluxo volumétrico",
+            "FluxoMassa": "Fluxo de massa",
+            "PowerBattery_com": "Potência da bateria",
+            "PowerBSG_com": "Potência BSG",
+            "Energia_liquida_Wh": "Energia líquida acumulada"
+        }
+
+        unidades = {
+            "SOC_calc": "%",
+            "RPM_com": "RPM",
+            "Speed_com": "km/h",
+            "LoadCarga_com": "%",
+            "Throttle_com": "%",
+            "Aceleracao_com": "m/s²",
+            "CorrenteBSG_com": "A",
+            "CorrenteFiltro": "A",
+            "CorrenteConsumoExterno_com": "A",
+            "TensaoBSG_com": "V",
+            "TensaoChumbo_com": "V",
+            "TempBattery_com": "°C",
+            "TempCatalisador_com": "°C",
+            "PowerBattery_com": "W",
+            "PowerBSG_com": "W",
+            "Energia_liquida_Wh": "Wh"
+        }
+
+        def nome_eixo(sufixo):
+
+            nome = nomes_variaveis.get(
+                sufixo,
+                sufixo.replace("_", " ")
+            )
+
+            unidade = unidades.get(sufixo, "")
+
+            if unidade:
+                return f"{nome} ({unidade})"
+
+            return nome
+
+        # Preferência inicial pelo SOC, se disponível
+        indice_soc = (
+            variaveis_comuns.index("SOC_calc")
+            if "SOC_calc" in variaveis_comuns
+            else 0
+        )
+
+        variavel_direita = st.selectbox(
+            "Variável do eixo Y direito (aplicada aos dois gráficos):",
+            variaveis_comuns,
+            index=indice_soc,
+            format_func=nome_eixo,
+            key=(
+                f"temporal_variavel_direita_{chave}_"
+                f"{indice_a}_{indice_b}"
+            )
+        )
+
+        st.caption(
+            "O eixo esquerdo representa a velocidade. "
+            "O eixo direito utiliza a mesma variável nos dois ensaios."
+        )
+
+        # =====================================================
+        # 5. FUNÇÃO PARA GERAR CADA GRÁFICO
+        # =====================================================
+
+        def plotar_grafico_temporal(
+            dados,
+            nome_arquivo,
+            sufixo_variavel,
+            chave_grafico
+        ):
+
+            nome_speed = f"{prefixo}Speed_com"
+            nome_direita = f"{prefixo}{sufixo_variavel}"
+
+            # ---------------------------------------------
+            # EXTRAÇÃO DAS SÉRIES
+            # ---------------------------------------------
+
+            try:
+
+                velocidade = np.asarray(
+                    dados[nome_speed],
+                    dtype=float
+                ).ravel()
+
+                variavel_direita = np.asarray(
+                    dados[nome_direita],
+                    dtype=float
+                ).ravel()
+
+            except (KeyError, TypeError, ValueError):
+
+                st.warning(
+                    f"Não foi possível extrair velocidade ou "
+                    f"{nome_eixo(sufixo_variavel)} de {nome_arquivo}."
+                )
+                return
+
+            n = min(
+                len(velocidade),
+                len(variavel_direita)
+            )
+
+            if n < 2:
+                st.warning("Não existem amostras suficientes.")
+                return
+
+            velocidade = velocidade[:n]
+            variavel_direita = variavel_direita[:n]
+
+            tempo = np.arange(n) * DT_AMOSTRAGEM
+
+            # ---------------------------------------------
+            # CLASSIFICAÇÃO DOS MODOS OPERACIONAIS
+            # ---------------------------------------------
+
+            # Prioridade:
+            # Frenagem > Alternador > Boost > Neutro
+            #
+            # Os modos posteriores sobrescrevem os anteriores
+            # caso existam sobreposições entre as condições.
+
+            modos = np.full(n, "", dtype=object)
+
+            definicao_modos = [
+                (
+                    "neu",
+                    "Neutro (idle)",
+                    "#a9e5f5"
+                ),
+                (
+                    "boo",
+                    "Boost",
+                    "#f5dfa0"
+                ),
+                (
+                    "alt",
+                    "Alternador",
+                    "#c9dfb0"
+                ),
+                (
+                    "fre",
+                    "Frenagem Regenerativa",
+                    "#e6a9d0"
+                )
+            ]
+
+            segmentos_modos = {
+                nome: []
+                for _, nome, _ in definicao_modos
+            }
+
+            for codigo, nome_modo, cor in definicao_modos:
+
+                nome_condicao = f"{prefixo}condicao_{codigo}"
+
+                if nome_condicao not in dados:
+                    continue
+
+                try:
+
+                    condicao = np.asarray(
+                        dados[nome_condicao],
+                        dtype=float
+                    ).ravel()
+
+                    tamanho = min(n, len(condicao))
+
+                    mascara = (
+                        np.isfinite(condicao[:tamanho])
+                        & (condicao[:tamanho] > 0)
+                    )
+
+                    indices_ativos = np.flatnonzero(mascara)
+
+                    modos[indices_ativos] = nome_modo
+
+                except (TypeError, ValueError):
+                    continue
+
+            # ---------------------------------------------
+            # IDENTIFICAÇÃO DOS INTERVALOS CONTÍNUOS
+            # ---------------------------------------------
+
+            i = 0
+
+            while i < n:
+
+                modo_atual = modos[i]
+
+                j = i
+
+                while (
+                    j + 1 < n
+                    and modos[j + 1] == modo_atual
+                ):
+                    j += 1
+
+                if modo_atual != "":
+
+                    segmentos_modos[modo_atual].append([
+                        {
+                            "xAxis": float(tempo[i])
+                        },
+                        {
+                            "xAxis": float(tempo[j] + DT_AMOSTRAGEM)
+                        }
+                    ])
+
+                i = j + 1
+
+            # ---------------------------------------------
+            # PREPARAÇÃO DOS DADOS TEMPORAIS
+            # ---------------------------------------------
+
+            dados_velocidade = [
+                [
+                    round(float(tempo[i]), 2),
+                    (
+                        float(velocidade[i])
+                        if np.isfinite(velocidade[i])
+                        else None
+                    )
+                ]
+                for i in range(n)
+            ]
+
+            dados_direita = [
+                [
+                    round(float(tempo[i]), 2),
+                    (
+                        float(variavel_direita[i])
+                        if np.isfinite(variavel_direita[i])
+                        else None
+                    )
+                ]
+                for i in range(n)
+            ]
+
+            # ---------------------------------------------
+            # SÉRIES E ÁREAS DOS MODOS
+            # ---------------------------------------------
+
+            series = []
+
+            nomes_legenda = [
+                "Velocidade",
+                nome_eixo(sufixo_variavel)
+            ]
+
+            # Cada modo recebe uma série auxiliar com markArea
+            for _, nome_modo, cor in definicao_modos:
+
+                intervalos = segmentos_modos[nome_modo]
+
+                if not intervalos:
+                    continue
+
+                nomes_legenda.append(nome_modo)
+
+                series.append({
+
+                    "name": nome_modo,
+
+                    "type": "line",
+
+                    "data": [],
+
+                    "symbol": "none",
+
+                    "lineStyle": {
+                        "color": cor,
+                        "width": 3
+                    },
+
+                    "markArea": {
+
+                        "silent": True,
+
+                        "z": 0,
+
+                        "itemStyle": {
+
+                            "color": cor,
+
+                            "opacity": 0.38,
+
+                            "borderWidth": 0
+                        },
+
+                        "data": intervalos
+
+                    }
+
+                })
+
+            # ---------------------------------------------
+            # SÉRIE DE VELOCIDADE
+            # ---------------------------------------------
+
+            series.append({
+
+                "name": "Velocidade",
+
+                "type": "line",
+
+                "yAxisIndex": 0,
+
+                "data": dados_velocidade,
+
+                "showSymbol": False,
+
+                "connectNulls": False,
+
+                "z": 5,
+
+                "lineStyle": {
+                    "color": "#0077bd",
+                    "width": 2.5
+                },
+
+                "itemStyle": {
+                    "color": "#0077bd"
+                },
+
+                "areaStyle": {
+
+                    "color": {
+
+                        "type": "linear",
+
+                        "x": 0,
+                        "y": 0,
+                        "x2": 0,
+                        "y2": 1,
+
+                        "colorStops": [
+
+                            {
+                                "offset": 0,
+                                "color": "rgba(0,119,189,0.35)"
+                            },
+
+                            {
+                                "offset": 1,
+                                "color": "rgba(0,119,189,0.02)"
+                            }
+
+                        ]
+
+                    }
+
+                }
+
+            })
+
+            # ---------------------------------------------
+            # SÉRIE DA VARIÁVEL NO EIXO DIREITO
+            # ---------------------------------------------
+
+            series.append({
+
+                "name": nome_eixo(sufixo_variavel),
+
+                "type": "line",
+
+                "yAxisIndex": 1,
+
+                "data": dados_direita,
+
+                "showSymbol": False,
+
+                "connectNulls": False,
+
+                "z": 6,
+
+                "lineStyle": {
+                    "color": "#f05a24",
+                    "width": 2
+                },
+
+                "itemStyle": {
+                    "color": "#f05a24"
+                }
+
+            })
+
+            # ---------------------------------------------
+            # CONFIGURAÇÃO DO ECHARTS
+            # ---------------------------------------------
+
+            opcoes = {
+
+                "title": {
+
+                    "text": "Correlação entre velocidade, variável e modos",
+
+                    "subtext": nome_arquivo,
+
+                    "left": "center",
+
+                    "top": "1%",
+
+                    "textStyle": {
+                        "fontSize": 16,
+                        "fontWeight": "bold"
+                    },
+
+                    "subtextStyle": {
+                        "fontSize": 11,
+                        "color": "#777777"
+                    }
+
+                },
+
+                "tooltip": {
+
+                    "trigger": "axis",
+
+                    "axisPointer": {
+                        "type": "cross"
+                    },
+
+                    "formatter": JsCode("""
+                        function(params) {
+
+                            if (!params || params.length === 0) {
+                                return '';
+                            }
+
+                            const tempo = params[0].value[0];
+
+                            let resultado =
+                                '<b>Tempo: ' +
+                                Number(tempo).toFixed(2) +
+                                ' s</b><br/>';
+
+                            params.forEach(function(item) {
+
+                                if (
+                                    !item.value ||
+                                    item.value[1] == null
+                                ) {
+                                    return;
+                                }
+
+                                resultado += (
+                                    item.marker + ' ' +
+                                    item.seriesName + ': <b>' +
+                                    Number(item.value[1])
+                                        .toFixed(2)
+                                        .replace('.', ',') +
+                                    '</b><br/>'
+                                );
+
+                            });
+
+                            return resultado;
+                        }
+                    """).js_code
+
+                },
+
+                "legend": {
+
+                    "type": "scroll",
+
+                    "top": "11%",
+
+                    "left": "center",
+
+                    "data": nomes_legenda
+
+                },
+
+                "grid": {
+
+                    "left": "7%",
+
+                    "right": "7%",
+
+                    "bottom": "16%",
+
+                    "top": "21%",
+
+                    "containLabel": True
+
+                },
+
+                "xAxis": {
+
+                    "type": "value",
+
+                    "name": "Tempo (s)",
+
+                    "nameLocation": "middle",
+
+                    "nameGap": 30,
+
+                    "min": 0,
+
+                    "axisLabel": {
+                        "formatter": "{value} s"
+                    },
+
+                    "splitLine": {
+                        "show": True,
+                        "lineStyle": {
+                            "type": "dashed",
+                            "opacity": 0.4
+                        }
+                    }
+
+                },
+
+                "yAxis": [
+
+                    {
+
+                        "type": "value",
+
+                        "name": "Velocidade (km/h)",
+
+                        "nameLocation": "middle",
+
+                        "nameGap": 48,
+
+                        "position": "left",
+
+                        "min": 0,
+
+                        "scale": True,
+
+                        "axisLine": {
+                            "show": True,
+                            "lineStyle": {
+                                "color": "#0077bd"
+                            }
+                        },
+
+                        "axisLabel": {
+                            "formatter": "{value}"
+                        },
+
+                        "splitLine": {
+                            "show": True,
+                            "lineStyle": {
+                                "type": "dotted",
+                                "opacity": 0.4
+                            }
+                        }
+
+                    },
+
+                    {
+
+                        "type": "value",
+
+                        "name": nome_eixo(sufixo_variavel),
+
+                        "nameLocation": "middle",
+
+                        "nameGap": 55,
+
+                        "position": "right",
+
+                        "scale": True,
+
+                        "axisLine": {
+                            "show": True,
+                            "lineStyle": {
+                                "color": "#f05a24"
+                            }
+                        },
+
+                        "axisLabel": {
+                            "formatter": JsCode("""
+                                function(value) {
+                                    return Number(value)
+                                        .toFixed(1)
+                                        .replace('.', ',');
+                                }
+                            """).js_code
+                        },
+
+                        "splitLine": {
+                            "show": False
+                        }
+
+                    }
+
+                ],
+
+                "dataZoom": [
+
+                    {
+                        "type": "inside",
+                        "xAxisIndex": 0
+                    },
+
+                    {
+                        "type": "slider",
+                        "xAxisIndex": 0,
+                        "bottom": "2%"
+                    }
+
+                ],
+
+                "series": series
+
+            }
+
+            # ---------------------------------------------
+            # RENDERIZAÇÃO
+            # ---------------------------------------------
+
+            st_echarts(
+                options=opcoes,
+                height="470px",
+                key=chave_grafico
+            )
+
+        # =====================================================
+        # 6. RENDERIZAR OS DOIS GRÁFICOS
+        # =====================================================
+
+        st.markdown("#### Primeiro ensaio")
+
+        plotar_grafico_temporal(
+            dados_a,
+            arquivo_a.name,
+            variavel_direita,
+            f"temporal_grafico_a_{chave}"
+        )
+
+        st.markdown("#### Segundo ensaio")
+
+        plotar_grafico_temporal(
+            dados_b,
+            arquivo_b.name,
+            variavel_direita,
+            f"temporal_grafico_b_{chave}"
+        )
+
     # =========================================================
     # 4. GRÁFICOS DE PERCENTUAL E CAPACIDADE DOS MODOS
     # =========================================================
@@ -3150,6 +3936,12 @@ def renderizar_comparacao_arquivos():
             chave="ftp"
             )
 
+            exibir_comparacao_temporal(
+            arquivos_ftp,
+            prefixo="f",
+            chave="ftp"
+            )
+
     # =========================================================
     # 6. COMPARAÇÃO HIGHWAY
     # =========================================================
@@ -3191,6 +3983,12 @@ def renderizar_comparacao_arquivos():
             arquivos_hgw,
             prefixo="h",
             chave="highway"
+            )
+
+            exibir_comparacao_temporal(
+                arquivos_hgw,
+                prefixo="h",
+                chave="highway"
             )
 
     # =========================================================
