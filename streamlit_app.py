@@ -1880,26 +1880,7 @@ def renderizar_analise_estatistica(arquivo_1, arquivo_2):
 
 def renderizar_comparacao_arquivos():
 
-    """
-    Compara até três arquivos FTP e três arquivos Highway.
-
-    Condições disponíveis:
-        - Todas as amostras
-        - Boost
-        - Alternador
-        - Neutro
-        - Frenagem regenerativa
-
-    Indicadores:
-        - Mínimo
-        - Média
-        - Máximo
-        - Quantidade de amostras
-
-    Apresenta tabela estatística e gráfico de intervalos,
-    com os valores mínimo, médio e máximo identificados.
-    """
-
+    MAX_ARQUIVOS_COMPARACAO = 10
     st.title("Comparação de Ensaios")
 
     st.caption(
@@ -1918,7 +1899,7 @@ def renderizar_comparacao_arquivos():
         st.subheader("Arquivos FTP")
 
         arquivos_ftp = st.file_uploader(
-            "Selecione até 3 arquivos FTP (.mat)",
+            f"Selecione até {MAX_ARQUIVOS_COMPARACAO} arquivos FTP (.mat)",
             type=["mat"],
             accept_multiple_files=True,
             key="comparacao_upload_ftp"
@@ -1929,7 +1910,7 @@ def renderizar_comparacao_arquivos():
         st.subheader("Arquivos Highway")
 
         arquivos_hgw = st.file_uploader(
-            "Selecione até 3 arquivos Highway (.mat)",
+            f"Selecione até {MAX_ARQUIVOS_COMPARACAO} arquivos Highway (.mat)",
             type=["mat"],
             accept_multiple_files=True,
             key="comparacao_upload_hgw"
@@ -1938,23 +1919,24 @@ def renderizar_comparacao_arquivos():
     arquivos_ftp = list(arquivos_ftp or [])
     arquivos_hgw = list(arquivos_hgw or [])
 
-    if len(arquivos_ftp) > 3:
-
+    if len(arquivos_ftp) > MAX_ARQUIVOS_COMPARACAO:
+    
         st.warning(
-            "Foram selecionados mais de três arquivos FTP. "
-            "Somente os três primeiros serão utilizados."
+            f"Limite de {MAX_ARQUIVOS_COMPARACAO} arquivos FTP. "
+            "Somente os primeiros serão utilizados."
         )
-
-        arquivos_ftp = arquivos_ftp[:3]
-
-    if len(arquivos_hgw) > 3:
-
+    
+        arquivos_ftp = arquivos_ftp[:MAX_ARQUIVOS_COMPARACAO]
+    
+    
+    if len(arquivos_hgw) > MAX_ARQUIVOS_COMPARACAO:
+    
         st.warning(
-            "Foram selecionados mais de três arquivos Highway. "
-            "Somente os três primeiros serão utilizados."
+            f"Limite de {MAX_ARQUIVOS_COMPARACAO} arquivos Highway. "
+            "Somente os primeiros serão utilizados."
         )
-
-        arquivos_hgw = arquivos_hgw[:3]
+    
+        arquivos_hgw = arquivos_hgw[:MAX_ARQUIVOS_COMPARACAO]
 
     st.divider()
 
@@ -2339,8 +2321,8 @@ def renderizar_comparacao_arquivos():
             "grid": {
 
                 "left": "12%",
-                "right": "8%",
-                "bottom": "18%",
+                "right": "12%",
+                "bottom": "25%",
                 "top": "24%",
                 "containLabel": True
             },
@@ -2354,9 +2336,9 @@ def renderizar_comparacao_arquivos():
                 "data": nomes_arquivos,
 
                 "axisLabel": {
-                    "rotate": 15,
+                    "rotate": 35,
                     "interval": 0,
-                    "fontSize": 10
+                    "fontSize": 9
                 },
 
                 "splitLine": {
@@ -2612,7 +2594,7 @@ def renderizar_comparacao_arquivos():
 
         st_echarts(
             options=opcoes_intervalos,
-            height="480px",
+            height="600px",
             key=f"comparacao_intervalos_{chave}"
         )
     # =========================================================
