@@ -2594,7 +2594,7 @@ def renderizar_comparacao_arquivos():
                 "z": 5,
             
                 "lineStyle": {
-                    "color": "#0077bd",
+                    "color": "rgba(0,119,189,0.1)",
                     "width": 2.5
                 },
             
