@@ -2594,7 +2594,7 @@ def renderizar_comparacao_arquivos():
                 "z": 5,
             
                 "lineStyle": {
-                    "color": "rgba(0,119,189,0.5)",
+                    "color": "rgba(0,119,189,0.8)",
                     "width": 2.5
                 },
             
@@ -2617,7 +2617,7 @@ def renderizar_comparacao_arquivos():
             
                             {
                                 "offset": 0,
-                                "color": "rgba(0,119,189,0.35)"
+                                "color": "rgba(0,119,189,0.1)"
                             },
             
                             {
