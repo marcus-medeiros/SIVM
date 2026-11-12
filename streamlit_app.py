@@ -2270,7 +2270,7 @@ def renderizar_comparacao_arquivos():
             "CorrenteConsumoExterno_com": "Corrente de cargas externas",
             "TensaoBSG_com": "Tensão BSG",
             "TensaoChumbo_com": "Tensão da bateria",
-            "TensaoAC1_norm": "Tensão AC1",
+            "TensaoAC1_norm": "Tensão Pedal",
             "TempBattery_com": "Temperatura da bateria",
             "TempCatalisador_com": "Temperatura do catalisador",
             "FluxoVolume_com": "Fluxo volumétrico",
@@ -2577,59 +2577,36 @@ def renderizar_comparacao_arquivos():
             # ---------------------------------------------
 
             series.append({
-
-                "name": "Velocidade",
-
+            
+                "name": nome_modo,
                 "type": "line",
-
-                "yAxisIndex": 0,
-
-                "data": dados_velocidade,
-
-                "showSymbol": False,
-
-                "connectNulls": False,
-
-                "z": 5,
-
-                "lineStyle": {
-                    "color": "#0077bd",
-                    "width": 2.5
-                },
-
+                "data": [],
+                "symbol": "none",
+            
+                # Cor do indicador na legenda
                 "itemStyle": {
-                    "color": "#0077bd"
+                    "color": cor
                 },
-
-                "areaStyle": {
-
-                    "color": {
-
-                        "type": "linear",
-
-                        "x": 0,
-                        "y": 0,
-                        "x2": 0,
-                        "y2": 1,
-
-                        "colorStops": [
-
-                            {
-                                "offset": 0,
-                                "color": "rgba(0,119,189,0.35)"
-                            },
-
-                            {
-                                "offset": 1,
-                                "color": "rgba(0,119,189,0.02)"
-                            }
-
-                        ]
-
-                    }
-
+            
+                "lineStyle": {
+                    "color": cor,
+                    "width": 3
+                },
+            
+                # Cor das áreas dos modos operacionais
+                "markArea": {
+                    "silent": True,
+                    "z": 0,
+            
+                    "itemStyle": {
+                        "color": cor,
+                        "opacity": 0.38,
+                        "borderColor": cor,
+                        "borderWidth": 0
+                    },
+            
+                    "data": intervalos
                 }
-
             })
 
             # ---------------------------------------------
