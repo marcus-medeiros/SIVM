@@ -2622,7 +2622,7 @@ def renderizar_comparacao_arquivos():
             
                             {
                                 "offset": 1,
-                                "color": "rgba(0,119,189,0.02)"
+                                "color": "rgba(0,119,189,0.3)"
                             }
             
                         ]
