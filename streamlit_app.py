@@ -2572,43 +2572,66 @@ def renderizar_comparacao_arquivos():
 
                 })
 
+            #
             # ---------------------------------------------
             # SÉRIE DE VELOCIDADE
             # ---------------------------------------------
-
+            
             series.append({
             
-                "name": nome_modo,
-                "type": "line",
-                "data": [],
-                "symbol": "none",
+                "name": "Velocidade",
             
-                # Cor do indicador na legenda
-                "itemStyle": {
-                    "color": cor
-                },
+                "type": "line",
+            
+                "yAxisIndex": 0,
+            
+                "data": dados_velocidade,
+            
+                "showSymbol": False,
+            
+                "connectNulls": False,
+            
+                "z": 5,
             
                 "lineStyle": {
-                    "color": cor,
-                    "width": 3
+                    "color": "#0077bd",
+                    "width": 2.5
                 },
             
-                # Cor das áreas dos modos operacionais
-                "markArea": {
-                    "silent": True,
-                    "z": 0,
+                "itemStyle": {
+                    "color": "#0077bd"
+                },
             
-                    "itemStyle": {
-                        "color": cor,
-                        "opacity": 0.38,
-                        "borderColor": cor,
-                        "borderWidth": 0
-                    },
+                "areaStyle": {
             
-                    "data": intervalos
+                    "color": {
+            
+                        "type": "linear",
+            
+                        "x": 0,
+                        "y": 0,
+                        "x2": 0,
+                        "y2": 1,
+            
+                        "colorStops": [
+            
+                            {
+                                "offset": 0,
+                                "color": "rgba(0,119,189,0.35)"
+                            },
+            
+                            {
+                                "offset": 1,
+                                "color": "rgba(0,119,189,0.02)"
+                            }
+            
+                        ]
+            
+                    }
+            
                 }
+            
             })
-
             # ---------------------------------------------
             # SÉRIE DA VARIÁVEL NO EIXO DIREITO
             # ---------------------------------------------
