@@ -2278,9 +2278,9 @@ def renderizar_comparacao_arquivos():
             "PowerBattery_com": "Potência da bateria",
             "PowerBSG_com": "Potência BSG",
             "Energia_liquida_Wh": "Energia líquida acumulada",
-            "Desconhecido_0": "Desconhecido 0",
-            "Desconhecido_1": "Desconhecido 1",
-            "Desconhecido_2": "Desconhecido 2",
+            "fDesc0": "Desconhecido 0",
+            "fDesc1": "Desconhecido 1",
+            "fDesc2": "Desconhecido 2",
             "Desconhecido_3": "Desconhecido 3",
             "Desconhecido_4": "Desconhecido 4",
             "Desconhecido_5": "Desconhecido 5"
