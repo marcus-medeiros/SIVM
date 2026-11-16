@@ -2582,6 +2582,7 @@ def renderizar_comparacao_arquivos():
 
         nomes_variaveis = {
             "SOC_calc": "SOC",
+            "SOH_com": "SOH",
             "RPM_com": "Rotação do motor",
             "LoadCarga_com": "Carga do motor",
             "Throttle_com": "Pedal do acelerador",
