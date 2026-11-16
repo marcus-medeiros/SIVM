@@ -1873,6 +1873,327 @@ def renderizar_analise_estatistica(arquivo_1, arquivo_2):
                     )
                 )
 
+    
+    # =========================================================
+    # 10. HEATMAPS ESPECÍFICOS DA BATERIA
+    # =========================================================
+
+    st.divider()
+
+    st.subheader(
+        "Análise térmica e elétrica da bateria"
+    )
+
+    st.caption(
+        "Relação entre a temperatura da bateria e seus "
+        "parâmetros elétricos, considerando a condição operacional "
+        "selecionada anteriormente."
+    )
+
+    # ---------------------------------------------------------
+    # DEFINIÇÃO DOS DOIS MAPAS
+    # ---------------------------------------------------------
+
+    heatmaps_bateria = [
+
+        {
+            "titulo": "Temperatura × Corrente da bateria",
+            "nome_x": "Temperatura da bateria (°C)",
+            "chave_x": f"{prefixo}TempBattery_com",
+            "nome_y": "Corrente da bateria (A)",
+            "chave_y": f"{prefixo}CorrenteFiltro",
+            "key": "temperatura_corrente"
+        },
+
+        {
+            "titulo": "Temperatura × Tensão da bateria",
+            "nome_x": "Temperatura da bateria (°C)",
+            "chave_x": f"{prefixo}TempBattery_com",
+            "nome_y": "Tensão da bateria (V)",
+            "chave_y": f"{prefixo}TensaoChumbo_com",
+            "key": "temperatura_tensao"
+        }
+
+    ]
+
+    colunas_bateria = st.columns(2)
+
+    # ---------------------------------------------------------
+    # PROCESSAMENTO DOS HEATMAPS
+    # ---------------------------------------------------------
+
+    for coluna, mapa in zip(
+        colunas_bateria,
+        heatmaps_bateria
+    ):
+
+        with coluna:
+
+            st.markdown(
+                f"**{mapa['titulo']}**"
+            )
+
+            # Verifica se as variáveis existem
+            if (
+                mapa["chave_x"] not in dados
+                or mapa["chave_y"] not in dados
+            ):
+
+                st.warning(
+                    f"Variáveis não encontradas: "
+                    f"{mapa['chave_x']} ou {mapa['chave_y']}."
+                )
+
+                continue
+
+            # Extrai os pares de dados respeitando a condição
+            # operacional selecionada na página
+            x, y = extrair_par_condicionado(
+                dados,
+                mapa["chave_x"],
+                mapa["chave_y"],
+                nome_condicao
+            )
+
+            if len(x) < 5:
+
+                st.info(
+                    "Amostras insuficientes para gerar este heatmap."
+                )
+
+                continue
+
+            if np.ptp(x) == 0 or np.ptp(y) == 0:
+
+                st.info(
+                    "Não há variação suficiente nos sinais "
+                    "para construir este heatmap."
+                )
+
+                continue
+
+            # -------------------------------------------------
+            # HISTOGRAMA BIDIMENSIONAL
+            # -------------------------------------------------
+
+            matriz, limites_x, limites_y = np.histogram2d(
+                x,
+                y,
+                bins=24
+            )
+
+            # Percentual de amostras em cada região
+            matriz_percentual = (
+                matriz / len(x)
+            ) * 100
+
+            # -------------------------------------------------
+            # RÓTULOS DOS EIXOS
+            # -------------------------------------------------
+
+            rotulos_x = [
+                formatar_numero(
+                    (limites_x[i] + limites_x[i + 1]) / 2,
+                    1
+                )
+                for i in range(len(limites_x) - 1)
+            ]
+
+            rotulos_y = [
+                formatar_numero(
+                    (limites_y[i] + limites_y[i + 1]) / 2,
+                    1
+                )
+                for i in range(len(limites_y) - 1)
+            ]
+
+            # -------------------------------------------------
+            # DADOS DO HEATMAP
+            # -------------------------------------------------
+
+            dados_heatmap = []
+
+            for i in range(matriz_percentual.shape[0]):
+
+                for j in range(matriz_percentual.shape[1]):
+
+                    valor = matriz_percentual[i, j]
+
+                    if valor > 0:
+
+                        dados_heatmap.append([
+                            i,
+                            j,
+                            round(float(valor), 3)
+                        ])
+
+            maior_percentual = float(
+                np.max(matriz_percentual)
+            )
+
+            # -------------------------------------------------
+            # CONFIGURAÇÃO ECHARTS
+            # -------------------------------------------------
+
+            opcoes_heatmap_bateria = {
+
+                "tooltip": {
+
+                    "position": "top",
+
+                    "formatter": JsCode(f"""
+                        function(params) {{
+
+                            const rotulosX = {rotulos_x!r};
+                            const rotulosY = {rotulos_y!r};
+
+                            return (
+                                '<b>{mapa["titulo"]}</b>' +
+                                '<br>{mapa["nome_x"]}: ' +
+                                rotulosX[params.value[0]] +
+                                '<br>{mapa["nome_y"]}: ' +
+                                rotulosY[params.value[1]] +
+                                '<br>Concentração: ' +
+                                Number(params.value[2])
+                                    .toFixed(3)
+                                    .replace('.', ',') + '%'
+                            );
+
+                        }}
+                    """).js_code
+
+                },
+
+                "grid": {
+
+                    "left": "17%",
+                    "right": "10%",
+                    "bottom": "25%",
+                    "top": "12%",
+                    "containLabel": True
+
+                },
+
+                "xAxis": {
+
+                    "type": "category",
+
+                    "name": mapa["nome_x"],
+
+                    "nameLocation": "middle",
+
+                    "nameGap": 40,
+
+                    "data": rotulos_x,
+
+                    "splitLine": {
+                        "show": False
+                    },
+
+                    "axisLabel": {
+
+                        "rotate": 45,
+
+                        "interval": 3,
+
+                        "fontSize": 9
+
+                    }
+
+                },
+
+                "yAxis": {
+
+                    "type": "category",
+
+                    "name": mapa["nome_y"],
+
+                    "nameLocation": "middle",
+
+                    "nameGap": 55,
+
+                    "data": rotulos_y,
+
+                    "splitLine": {
+                        "show": False
+                    },
+
+                    "axisLabel": {
+
+                        "fontSize": 9
+
+                    }
+
+                },
+
+                "visualMap": {
+
+                    "min": 0,
+
+                    "max": maior_percentual,
+
+                    "calculable": True,
+
+                    "orient": "horizontal",
+
+                    "left": "center",
+
+                    "bottom": "0%",
+
+                    "dimension": 2,
+
+                    "text": [
+                        "Maior",
+                        "Menor"
+                    ]
+
+                },
+
+                "series": [
+
+                    {
+
+                        "name": "Concentração de amostras",
+
+                        "type": "heatmap",
+
+                        "data": dados_heatmap,
+
+                        "emphasis": {
+
+                            "itemStyle": {
+
+                                "shadowBlur": 8
+
+                            }
+
+                        }
+
+                    }
+
+                ]
+
+            }
+
+            st_echarts(
+
+                options=opcoes_heatmap_bateria,
+
+                height="400px",
+
+                key=(
+                    f"heatmap_bateria_{prefixo}_"
+                    f"{mapa['key']}_{chave_ciclo if 'chave_ciclo' in locals() else prefixo}"
+                )
+
+            )
+
+            st.caption(
+                f"Total de amostras utilizadas: {len(x):,}"
+                .replace(",", ".")
+            )
+
+
 
 
 
