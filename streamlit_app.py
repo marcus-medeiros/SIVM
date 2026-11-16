@@ -2602,9 +2602,9 @@ def renderizar_comparacao_arquivos():
             "fDesc0": "Desconhecido 0",
             "fDesc1": "Desconhecido 1",
             "fDesc2": "Desconhecido 2",
-            "Desconhecido_3": "Desconhecido 3",
-            "Desconhecido_4": "Desconhecido 4",
-            "Desconhecido_5": "Desconhecido 5"
+            "fDesc3": "Desconhecido 3",
+            "fDesc4": "Desconhecido 4",
+            "fDesc5": "Desconhecido 5"
         }
 
         unidades = {
