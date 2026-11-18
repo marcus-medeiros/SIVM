@@ -1105,24 +1105,6 @@ def pagina_eventos(arquivo_1, arquivo_2):
         "series": [{"type": "heatmap", "data": dados_hm, "label": {"show": True}}],
     }, "380px", f"ev_trans_{pref}")
 
-    # Regeneração
-    st.markdown("#### Eficiência de regeneração")
-    massa = st.number_input("Massa do veículo (kg)", 500.0, 5000.0, 1500.0, 50.0, key=f"ev_massa_{pref}")
-    fre = eficiencia_regeneracao(df, massa)
-    if fre.empty:
-        st.info("Nenhum evento de frenagem regenerativa encontrado.")
-    else:
-        e_ele, e_cin = fre["E elétrica (Wh)"].sum(), fre["E cinética (Wh)"].sum()
-        r1, r2, r3 = st.columns(3)
-        r1.metric("Energia elétrica recuperada", f"{fmt_br(e_ele)} Wh")
-        r2.metric("Energia cinética dissipada", f"{fmt_br(e_cin)} Wh")
-        r3.metric("Eficiência global", f"{fmt_br(e_ele / e_cin * 100)} %" if e_cin > 0 else "N/D")
-        st.caption("Estimativa: energia cinética = ½·m·(v₁² − v₂²) por evento; energia elétrica = |Ah| × tensão média. "
-                   "Perdas aerodinâmicas e de rolamento não são descontadas, então é um limite inferior da eficiência.")
-        st.dataframe(fre[["Início (s)", "Duração (s)", "Vel. inicial (km/h)", "Vel. final (km/h)", "Ah",
-                          "E cinética (Wh)", "E elétrica (Wh)", "Eficiência (%)"]].round(2),
-                     use_container_width=True, hide_index=True)
-
     # Ineficiências
     st.markdown("#### Possíveis ineficiências da estratégia")
     i1, i2, i3 = st.columns(3)
