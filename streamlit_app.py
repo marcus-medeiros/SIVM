@@ -51,13 +51,13 @@ COR_VAR = "#f05a24"
 # Ordem = prioridade crescente na classificação exclusiva (o último sobrescreve)
 MODOS = [
     {"cod": "neu", "nome": "Neutro (idle)", "curto": "Neutro", "cor": COR_NEUTRO,
-     "sombra": "#a9e5f5", "pct": "por_idle", "cap": "Capacidade_auxiliares"},
+     "sombra": COR_NEUTRO, "pct": "por_idle", "cap": "Capacidade_auxiliares"},
     {"cod": "boo", "nome": "Boost", "curto": "Boost", "cor": COR_BOOST,
-     "sombra": "#f5dfa0", "pct": "por_boost", "cap": "Capacidade_boost"},
+     "sombra": COR_BOOST, "pct": "por_boost", "cap": "Capacidade_boost"},
     {"cod": "alt", "nome": "Alternador", "curto": "Alternador", "cor": COR_ALTERNADOR,
-     "sombra": "#c9dfb0", "pct": "por_alternador", "cap": "Capacidade_alternador"},
+     "sombra": COR_ALTERNADOR, "pct": "por_alternador", "cap": "Capacidade_alternador"},
     {"cod": "fre", "nome": "Frenagem Regenerativa", "curto": "Frenagem", "cor": COR_REGEN,
-     "sombra": "#e6a9d0", "pct": "por_frenagem", "cap": "Capacidade_frenagem"},
+     "sombra": COR_REGEN, "pct": "por_frenagem", "cap": "Capacidade_frenagem"},
 ]
 NOMES_MODO_IDX = ["Sem modo"] + [m["nome"] for m in MODOS]   # índice 0..4
 CURTOS_IDX = ["Sem modo"] + [m["curto"] for m in MODOS]
