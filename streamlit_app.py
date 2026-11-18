@@ -1733,7 +1733,7 @@ def grafico_boxplot_arquivos(df_var, variavel, subtitulo, chave):
              "formatter": js("function(p){return 'Máx: ' + Number(p.value[1]).toFixed(2).replace('.', ',');}")}, "z": 10},
             {"name": "Média", "type": "scatter", "data": medias, "symbolSize": 7,
              "itemStyle": {"color": COR_ALTERNADOR, "borderColor": "#fff"},
-             "label": {"show": True, "position": "right", "fontSize": 9,
+             "label": {"show": True, "position": "right", "fontSize": 12,
              "formatter": js("function(p){return 'Média: ' + Number(p.value[1]).toFixed(2).replace('.', ',');}")},
              "z": 11},
         ],
