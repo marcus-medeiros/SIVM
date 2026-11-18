@@ -7,6 +7,9 @@ import math
 import random
 from scipy.io import loadmat
 
+user_master = st.secrets["USER_MASTER"]
+password_master = st.secrets["PASSWORD_MASTER"]
+
 # Configuração da página inicial
 st.set_page_config(
     page_title="SIVM - Telemetria, Estatística & Análise",
@@ -132,7 +135,7 @@ def check_login():
         senha = st.text_input("🔑 Senha", type="password", placeholder="admin")
 
         if st.button("Entrar", use_container_width=True):
-            if usuario == "ITEMM" and senha == "lobos":
+            if usuario == user_master and senha == password_master:
                 st.session_state["authenticated"] = True
                 st.rerun()
             else:
