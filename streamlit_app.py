@@ -1,4706 +1,2005 @@
-import streamlit as st
-from streamlit_echarts import st_echarts, JsCode
-import pandas as pd
-import numpy as np
+# -*- coding: utf-8 -*-
+"""
+SIVM - Telemetria, Estatística & Análise (MHEV)
+
+Módulos:
+  📈 Telemetria      KPIs, dois eixos livres, velocidade × variável × modos (faixa de modos,
+                     sombreado, linha colorida), Ah acumulado por modo
+  📊 Estatística     pizzas, estatísticas, histograma, boxplot por modo, heatmaps de densidade
+  📉 Análise         emissões, start-stop, proporção por condição, balanço de carga
+  🧩 Eventos & KPIs  segmentação por evento, transições, eficiência de regeneração,
+                     ineficiências, KPIs avançados, exportação CSV/Excel
+  🔗 Correlações     matriz de correlação e dispersão colorida por modo
+  ⚖️ Comparação      estatísticas, boxplot, Δ% vs referência, radar, tendência por data,
+                     modos, comparação temporal (separada/sobreposta, tempo/distância)
+
+Convenção de nomes dos arquivos: "AGM - L2 - 23092026 - FTP.mat" (bateria - data ddmmaaaa - ciclo)
+"""
+import hmac
+import io
+import json
 import re
-import math
-import random
+from datetime import datetime
+
+import numpy as np
+import pandas as pd
+import streamlit as st
 from scipy.io import loadmat
+from streamlit_echarts import JsCode, st_echarts
 
-user_master = st.secrets["USER_MASTER"]
-password_master = st.secrets["PASSWORD_MASTER"]
-
-# Configuração da página inicial
 st.set_page_config(
     page_title="SIVM - Telemetria, Estatística & Análise",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
-# Passo de tempo de amostragem fixado em 0.1 s
-DT_AMOSTRAGEM = 0.1
+# =======================================================================
+# 0. CONSTANTES
+# =======================================================================
+DT_AMOSTRAGEM = 0.1      # passo de amostragem fixo (s)
+MAX_PTS = 12000          # máximo de pontos desenhados por série (decimação)
+MAX_ARQUIVOS_COMPARACAO = 10
 
-VARIAVEIS_PLOTAVEIS = [
-    "fSpeed_com", 
-    "fAceleracao_com",
-    "fCorrenteBSG_com",
-    "fCorrenteFiltro", 
-    "fCorrenteConsumoExterno_com",
-    "fFluxoVolume_com", 
-    "fLoadCarga_com", 
-    "fRPM_com", 
-    "fSOC_calc", 
-    "fTempBattery_com", 
-    "fTempCatalisador_com", 
-    "fTensaoAC1_norm", 
-    "fTensaoBSG_com", 
-    "fTensaoChumbo_com", 
-    "fTensaoFreio_com", 
-    "fThrottle_com",
-    "fPowerBattery_com",
-    "fEnergia_liquida_Wh",
-    "hSpeed_com", 
-    "hAceleracao_com",
-    "hCorrenteBSG_com",
-    "hCorrenteFiltro", 
-    "hCorrenteConsumoExterno_com",
-    "hFluxoVolume_com",
-    "hLoadCarga_com", 
-    "hRPM_com", 
-    "hSOC_calc", 
-    "hTempBattery_com", 
-    "hTempCatalisador_com", 
-    "hTensaoAC1_norm", 
-    "hTensaoBSG_com", 
-    "hTensaoChumbo_com", 
-    "hTensaoFreio_com", 
-    "hThrottle_com",
-    "hPowerBattery_com",
-    "hEnergia_liquida_Wh"
+COR_BOOST = "#702082"
+COR_NEUTRO = "#9e9e9e"
+COR_ALTERNADOR = "#f39200"
+COR_REGEN = "#008848"
+COR_CARGAS_AUX = "#424242"
+COR_VEL = "#0077bd"
+COR_VAR = "#f05a24"
+
+# Ordem = prioridade crescente na classificação exclusiva (o último sobrescreve)
+MODOS = [
+    {"cod": "neu", "nome": "Neutro (idle)", "curto": "Neutro", "cor": COR_NEUTRO,
+     "sombra": "#a9e5f5", "pct": "por_idle", "cap": "Capacidade_auxiliares"},
+    {"cod": "boo", "nome": "Boost", "curto": "Boost", "cor": COR_BOOST,
+     "sombra": "#f5dfa0", "pct": "por_boost", "cap": "Capacidade_boost"},
+    {"cod": "alt", "nome": "Alternador", "curto": "Alternador", "cor": COR_ALTERNADOR,
+     "sombra": "#c9dfb0", "pct": "por_alternador", "cap": "Capacidade_alternador"},
+    {"cod": "fre", "nome": "Frenagem Regenerativa", "curto": "Frenagem", "cor": COR_REGEN,
+     "sombra": "#e6a9d0", "pct": "por_frenagem", "cap": "Capacidade_frenagem"},
+]
+NOMES_MODO_IDX = ["Sem modo"] + [m["nome"] for m in MODOS]   # índice 0..4
+CURTOS_IDX = ["Sem modo"] + [m["curto"] for m in MODOS]
+
+# sufixo (sem prefixo f/h) -> (nome, unidade)
+VARS = {
+    "Speed_com": ("Velocidade", "km/h"),
+    "Aceleracao_com": ("Aceleração", "m/s²"),
+    "CorrenteBSG_com": ("Corrente BSG", "A"),
+    "CorrenteFiltro": ("Corrente da bateria", "A"),
+    "CorrenteConsumoExterno_com": ("Corrente cargas externas", "A"),
+    "FluxoVolume_com": ("Fluxo volumétrico", ""),
+    "FluxoMassa": ("Fluxo de massa", ""),
+    "LoadCarga_com": ("Carga do motor", "%"),
+    "RPM_com": ("Rotação do motor", "RPM"),
+    "SOC_calc": ("SOC", "%"),
+    "SOH_com": ("SOH", "%"),
+    "TempBattery_com": ("Temperatura da bateria", "°C"),
+    "TempCatalisador_com": ("Temperatura do catalisador", "°C"),
+    "TensaoAC1_norm": ("Tensão AC1", ""),
+    "TensaoBSG_com": ("Tensão BSG", "V"),
+    "TensaoChumbo_com": ("Tensão da bateria", "V"),
+    "TensaoFreio_com": ("Tensão do freio", ""),
+    "Throttle_com": ("Pedal do acelerador", "%"),
+    "PowerBattery_com": ("Potência da bateria", "W"),
+    "PowerBSG_com": ("Potência BSG", "W"),
+    "Energia_liquida_Wh": ("Energia líquida acumulada", "Wh"),
+}
+
+# KPIs escalares dos arquivos (sufixo -> (rótulo, unidade))
+KPIS_ESC = {
+    "distancia_total_km": ("Distância", "km"),
+    "litros_totais": ("Combustível", "L"),
+    "autonomia_final": ("Autonomia", "km/L"),
+    "Capacidade_Ah": ("Capacidade da bateria", "Ah"),
+    "emissao_media_g_km": ("Emissão média", "g/km"),
+    "co2_total_g": ("CO₂ total", "g"),
+    "por_boost": ("% Boost", "%"),
+    "por_idle": ("% Neutro", "%"),
+    "por_alternador": ("% Alternador", "%"),
+    "por_frenagem": ("% Frenagem", "%"),
+    "Capacidade_boost": ("Ah Boost", "Ah"),
+    "Capacidade_auxiliares": ("Ah Cargas aux.", "Ah"),
+    "Capacidade_alternador": ("Ah Alternador", "Ah"),
+    "Capacidade_frenagem": ("Ah Frenagem", "Ah"),
+    "s_start_stop": ("Tempo Start-Stop", "s"),
+    "s_cut": ("Tempo Cut-off", "s"),
+}
+
+ESTILOS = [
+    "Faixa de modos + sombreado",
+    "Faixa de modos",
+    "Sombreado nos gráficos",
+    "Linha colorida + faixa",
 ]
 
-# Cores oficiais extraídas das figuras
-COR_BOOST = "#702082"        # Roxo
-COR_NEUTRO = "#9e9e9e"       # Cinza (ou Cargas Auxiliares / Neutro)
-COR_ALTERNADOR = "#f39200"   # Laranja
-COR_REGEN = "#008848"        # Verde
-COR_CARGAS_AUX = "#424242"   # Cinza Escuro
-
-# Inicialização de variáveis de sessão
-if "authenticated" not in st.session_state:
-    st.session_state["authenticated"] = False
 
 # =======================================================================
-# 1. DETECÇÃO AUTOMÁTICA DE UNIDADES
+# 1. UTILITÁRIOS
 # =======================================================================
-def extrair_unidade(nome_var: str) -> str:
-    match = re.search(r"[\(\[]([^\)\]]+)[\)\]]", nome_var)
-    if match:
-        return match.group(1).strip()
+def js(codigo: str) -> str:
+    """Código JavaScript pronto para uso dentro das opções do ECharts."""
+    return JsCode(codigo).js_code
 
-    unidades_conhecidas = {
-        "soc": "%",
-        "speed": "km/h",
-        "velocidade": "km/h",
-        "tensao": "V",
-        "voltage": "V",
-        "corrente": "A",
-        "current": "A",
-        "potencia": "kW",
-        "power": "kW",
-        "temperatura": "°C",
-        "temp": "°C",
-        "torque": "Nm",
-        "pressao": "bar",
-        "pressure": "bar",
-    }
-    nome_lower = nome_var.lower()
-    for chave, unid in unidades_conhecidas.items():
-        if chave in nome_lower:
-            return unid
-    return ""
+
+FMT_DEC = js("""function(p){ if (p.value == null || isNaN(p.value)) return '';
+    return Number(p.value).toFixed(2).replace('.', ','); }""")
+FMT_TEMPO = js("""function(p){ if (p.value == null || isNaN(p.value)) return '';
+    return Number(p.value).toFixed(2).replace('.', ',') + ' s'; }""")
+FMT_AXIS_BR = js("""function(v){ return Number(v).toFixed(1).replace('.', ','); }""")
+
+
+def grafico(options: dict, altura: str = "450px", chave: str = None):
+    """Renderiza um gráfico ECharts com toolbox de exportação PNG e tema global."""
+    options.setdefault("toolbox", {
+        "right": "2%",
+        "feature": {"saveAsImage": {"title": "Salvar PNG", "pixelRatio": 2}},
+    })
+    tema = "dark" if st.session_state.get("tema_escuro") else ""
+    st_echarts(options=options, height=altura, key=chave, theme=tema)
+
+
+def fmt_br(valor, casas: int = 2) -> str:
+    if valor is None:
+        return "N/D"
+    try:
+        if not np.isfinite(valor):
+            return "N/D"
+    except TypeError:
+        return "N/D"
+    return f"{valor:,.{casas}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def get_serie(dados: dict, nome: str):
+    """Série numérica (float) ou None."""
+    bruto = dados.get(nome)
+    if bruto is None:
+        return None
+    try:
+        v = np.asarray(bruto, dtype=float).ravel()
+    except (TypeError, ValueError):
+        return None
+    return v if v.size > 0 else None
+
+
+def get_escalar(dados: dict, nome: str):
+    v = get_serie(dados, nome)
+    if v is None:
+        return None
+    v = v[np.isfinite(v)]
+    return float(v[0]) if v.size else None
+
+
+def soc_percentual(serie):
+    """SOC em %, tratando séries normalizadas em 0-1."""
+    if serie is None:
+        return None
+    s = serie[np.isfinite(serie)]
+    if s.size == 0:
+        return None
+    return serie * 100 if (s.min() >= 0 and s.max() <= 1) else serie
+
+
+def rotulo_var(sufixo: str, com_unidade: bool = True) -> str:
+    nome, un = VARS.get(sufixo, (sufixo.replace("_", " "), ""))
+    return f"{nome} ({un})" if (un and com_unidade) else nome
+
+
+def unidade_var(sufixo: str) -> str:
+    return VARS.get(sufixo, ("", ""))[1]
+
+
+def listar_series(dados: dict, prefixo: str) -> list:
+    """Sufixos das séries temporais (mesmo comprimento da velocidade)."""
+    vel = get_serie(dados, f"{prefixo}Speed_com")
+    tamanhos = [np.asarray(v).size for k, v in dados.items() if k.startswith(prefixo)]
+    n_ref = len(vel) if vel is not None else (max(tamanhos) if tamanhos else 0)
+    achados = []
+    for nome, valor in dados.items():
+        if not nome.startswith(prefixo):
+            continue
+        suf = nome[len(prefixo):]
+        if suf.startswith("condicao"):
+            continue
+        v = np.asarray(valor)
+        if v.size == n_ref and v.size > 1 and np.isfinite(v.astype(float)).any():
+            achados.append(suf)
+    ordem = list(VARS.keys())
+    return sorted(achados, key=lambda s: (ordem.index(s) if s in ordem else 999, s))
+
+
+def vetor_modos(dados: dict, prefixo: str, n: int) -> np.ndarray:
+    """Classificação exclusiva: 0 = sem modo, 1..4 = índice em MODOS (prioridade crescente)."""
+    modos = np.zeros(n, dtype=np.int8)
+    for i, m in enumerate(MODOS, start=1):
+        c = get_serie(dados, f"{prefixo}condicao_{m['cod']}")
+        if c is None:
+            continue
+        k = min(n, len(c))
+        ativo = np.isfinite(c[:k]) & (c[:k] > 0)
+        modos[:k][ativo] = i
+    return modos
+
+
+def segmentos(mascara: np.ndarray):
+    """Início e fim (exclusivo) de cada trecho contínuo True."""
+    m = np.concatenate([[0], mascara.astype(np.int8), [0]])
+    d = np.diff(m)
+    return np.flatnonzero(d == 1), np.flatnonzero(d == -1)
+
+
+def mascara_filtro(dados: dict, prefixo: str, n: int) -> np.ndarray:
+    """Filtro global de velocidade definido na barra lateral."""
+    mask = np.ones(n, dtype=bool)
+    lo, hi = st.session_state.get("filtro_vel", (0, 200))
+    if lo <= 0 and hi >= 200:
+        return mask
+    vel = get_serie(dados, f"{prefixo}Speed_com")
+    if vel is None:
+        return mask
+    k = min(n, len(vel))
+    mask[:k] = (vel[:k] >= lo) & (vel[:k] <= (hi if hi < 200 else np.inf))
+    mask[k:] = False
+    return mask
+
+
+def extrair(dados, prefixo, nomes, cod=None, com_modos=False, filtrar=True):
+    """
+    Séries alinhadas, apenas amostras finitas, na condição `cod` (ou todas)
+    e dentro do filtro global. Se com_modos=True, acrescenta o vetor de modos.
+    """
+    vazio = [np.array([])] * (len(nomes) + (1 if com_modos else 0))
+    arrs = [get_serie(dados, nm) for nm in nomes]
+    if any(a is None for a in arrs):
+        return vazio
+    n = min(len(a) for a in arrs)
+    cond = None
+    if cod:
+        cond = get_serie(dados, f"{prefixo}condicao_{cod}")
+        if cond is None:
+            return vazio
+        n = min(n, len(cond))
+    mask = np.ones(n, dtype=bool)
+    for a in arrs:
+        mask &= np.isfinite(a[:n])
+    if cond is not None:
+        mask &= np.isfinite(cond[:n]) & (cond[:n] > 0)
+    if filtrar:
+        mask &= mascara_filtro(dados, prefixo, n)
+    saida = [a[:n][mask] for a in arrs]
+    if com_modos:
+        saida.append(vetor_modos(dados, prefixo, n)[mask])
+    return saida
+
+
+def to_pts(x, y, extra=None):
+    """Pares [x, y(, extra)] serializáveis, com NaN -> None."""
+    xs = np.round(np.asarray(x, dtype=float), 3).tolist()
+    ys = np.round(np.asarray(y, dtype=float), 4).tolist()
+    ys = [None if v != v else v for v in ys]
+    if extra is None:
+        return [[a, b] for a, b in zip(xs, ys)]
+    return [[a, b, c] for a, b, c in zip(xs, ys, np.asarray(extra).tolist())]
+
+
+def passo_decimacao(n: int) -> int:
+    return max(1, n // MAX_PTS)
+
+
+def parse_nome(nome_arquivo: str):
+    """'AGM - L2 - 23092026 - FTP.mat' -> {'bateria','data','ciclo'} ou None."""
+    m = re.search(r"(L\d+)\s*-\s*(\d{8})\s*-\s*(FTP|HIGHWAY|HGW)", nome_arquivo, re.I)
+    if not m:
+        return None
+    try:
+        data = datetime.strptime(m.group(2), "%d%m%Y")
+    except ValueError:
+        return None
+    ciclo = "FTP" if m.group(3).upper() == "FTP" else "HIGHWAY"
+    return {"bateria": m.group(1).upper(), "data": data, "ciclo": ciclo}
+
+
+def identificar_bateria(nome_arquivo: str):
+    info = parse_nome(nome_arquivo)
+    if not info:
+        raise ValueError(f"Nome de arquivo fora do padrão esperado: {nome_arquivo}")
+    return info["bateria"], info["data"].strftime("%d%m%Y")
+
+
+def excel_bytes(abas: dict):
+    try:
+        buf = io.BytesIO()
+        with pd.ExcelWriter(buf, engine="openpyxl") as w:
+            for nome, df in abas.items():
+                df.to_excel(w, sheet_name=nome[:31], index=False)
+        return buf.getvalue()
+    except Exception:
+        return None
+
+
+def csv_bytes(df: pd.DataFrame) -> bytes:
+    return df.to_csv(index=False, sep=";", decimal=",").encode("utf-8-sig")
+
 
 # =======================================================================
-# 2. TELA DE LOGIN
+# 2. LEITURA DE ARQUIVOS .MAT (com cache)
 # =======================================================================
+@st.cache_resource(show_spinner="Lendo arquivo .mat...", max_entries=24)
+def _ler_mat(conteudo: bytes) -> dict:
+    bruto = loadmat(io.BytesIO(conteudo))
+    saida = {}
+    for k, v in bruto.items():
+        if k.startswith("__"):
+            continue
+        a = np.asarray(v)
+        if a.dtype == bool or (np.issubdtype(a.dtype, np.number)
+                               and not np.issubdtype(a.dtype, np.complexfloating)):
+            saida[k] = a.astype(float).ravel()
+    return saida
+
+
+def carregar_arquivo_mat(arquivo_upload) -> dict:
+    try:
+        return _ler_mat(arquivo_upload.getvalue())
+    except Exception as e:
+        st.error(f"Erro ao ler {getattr(arquivo_upload, 'name', 'arquivo')}: {e}")
+        return {}
+
+
+def ciclos_carregados(arquivo_1, arquivo_2) -> list:
+    ciclos = []
+    for arq, pref, rot in ((arquivo_1, "f", "FTP"), (arquivo_2, "h", "Highway")):
+        if arq:
+            d = carregar_arquivo_mat(arq)
+            if d:
+                ciclos.append({"nome": f"{rot} — {arq.name}", "dados": d, "prefixo": pref, "rotulo": rot})
+    return ciclos
+
+
+# =======================================================================
+# 3. LOGIN
+# =======================================================================
+def _igual(a: str, b: str) -> bool:
+    return hmac.compare_digest(a.encode("utf-8"), b.encode("utf-8"))
+
+
 def check_login():
     st.markdown("""
         <style>
             .stApp { background-color: #f0f2f6; }
-            .login-title { 
-                text-align: center; 
-                color: #ce4545; 
-                font-weight: bold; 
-                margin-bottom: 2rem; 
-            }
-            div.stButton > button { 
-                background-color: #ce4545; 
-                color: white; 
-                height: 3em; 
-                font-weight: bold; 
-                border: none;
-                border-radius: 6px;
-            }
-            div.stButton > button:hover { 
-                background-color: #a83838; 
-                color: white; 
-            }
+            .login-title { text-align:center; color:#ce4545; font-weight:bold; margin-bottom:2rem; }
+            div.stButton > button { background-color:#ce4545; color:white; height:3em;
+                                    font-weight:bold; border:none; border-radius:6px; }
+            div.stButton > button:hover { background-color:#a83838; color:white; }
         </style>
     """, unsafe_allow_html=True)
 
-    _, col_login, _ = st.columns([1, 1.2, 1])
-    with col_login:
+    _, col, _ = st.columns([1, 1.2, 1])
+    with col:
         st.markdown("<h1 class='login-title'>- SIVM -</h1>", unsafe_allow_html=True)
-        usuario = st.text_input("👤 Usuário", placeholder="admin")
-        senha = st.text_input("🔑 Senha", type="password", placeholder="admin")
+        usuario = st.text_input("👤 Usuário")
+        senha = st.text_input("🔑 Senha", type="password")
+        tentativas = st.session_state.get("tentativas", 0)
+
+        if tentativas >= 5:
+            st.error("Muitas tentativas incorretas. Recarregue a página para tentar novamente.")
+            return
 
         if st.button("Entrar", use_container_width=True):
-            if usuario == user_master and senha == password_master:
+            ok = _igual(usuario, str(st.secrets["USER_MASTER"])) and \
+                 _igual(senha, str(st.secrets["PASSWORD_MASTER"]))
+            if ok:
                 st.session_state["authenticated"] = True
+                st.session_state["tentativas"] = 0
                 st.rerun()
             else:
+                st.session_state["tentativas"] = tentativas + 1
                 st.error("Usuário ou senha incorretos.")
 
-# =======================================================================
-# 3. PROCESSAMENTO DE ARQUIVOS .MAT
-# =======================================================================
-def carregar_arquivo_mat(arquivo_upload):
-    try:
-        conteudo = loadmat(arquivo_upload)
-        variaveis = {
-            k: np.array(v).flatten()
-            for k, v in conteudo.items()
-            if not k.startswith("__") and np.issubdtype(np.array(v).dtype, np.number)
-        }
-        return variaveis
-    except Exception as e:
-        st.error(f"Erro ao ler {arquivo_upload.name}: {e}")
-        return {}
-
-def identificar_bateria(nome_arquivo):
-    """
-    Identifica o tipo de bateria pelo nome:
-    AGM - L2 - 23092026 - FTP.mat
-    AGM - L3 - 24092026 - Highway.mat
-    """
-
-    nome = nome_arquivo.upper()
-
-    match = re.search(
-        r"AGM\s*-\s*(L2|L3)\s*-\s*(\d{8})\s*-\s*(FTP|HIGHWAY)",
-        nome
-    )
-
-    if not match:
-        raise ValueError(
-            f"Nome de arquivo fora do padrão esperado: {nome_arquivo}"
-        )
-
-    return match.group(1), match.group(2)
-
-def obter_escalar_mat(variaveis, nome_variavel):
-    """Retorna uma variável escalar de um arquivo MAT como float."""
-    if nome_variavel not in variaveis:
-        raise KeyError(f"A variável '{nome_variavel}' não foi encontrada no arquivo MAT.")
-
-    valores = np.asarray(variaveis[nome_variavel]).reshape(-1)
-    if valores.size == 0:
-        raise ValueError(f"A variável '{nome_variavel}' está vazia.")
-
-    return float(valores[0])
 
 # =======================================================================
-# 5. GRÁFICO TEMPORAL MULTIVARIÁVEL (ECHARTS)
+# 4. COMPONENTES GRÁFICOS GENÉRICOS
 # =======================================================================
-def plotar_grafico_duplo_eixo(
-    serie_esq,
-    serie_dir,
-    nome_eixo_esq,
-    nome_eixo_dir,
-    titulo=None,
-    key=None
-):
-    if not titulo:
-        titulo = f"{nome_eixo_esq} vs {nome_eixo_dir}"
+def heatmap_2d(x, y, nome_x, nome_y, chave, altura="400px", bins=24, titulo=None):
+    """Heatmap de densidade (% das amostras por célula)."""
+    if len(x) < 5:
+        st.info("Amostras insuficientes para este heatmap.")
+        return
+    if np.ptp(x) == 0 or np.ptp(y) == 0:
+        st.info("Não há variação suficiente nos sinais para construir este heatmap.")
+        return
 
-    unidade_esq = extrair_unidade(nome_eixo_esq)
-    unidade_dir = extrair_unidade(nome_eixo_dir)
+    matriz, ex, ey = np.histogram2d(x, y, bins=bins)
+    pct = matriz / len(x) * 100
+    rx = [fmt_br((ex[i] + ex[i + 1]) / 2, 1) for i in range(bins)]
+    ry = [fmt_br((ey[i] + ey[i + 1]) / 2, 1) for i in range(bins)]
+    dados = [[int(i), int(j), round(float(pct[i, j]), 3)] for i, j in zip(*np.nonzero(pct))]
 
-    fmt_esq = f"{{value}} {unidade_esq}".strip() if unidade_esq else "{value}"
-    fmt_dir = f"{{value}} {unidade_dir}".strip() if unidade_dir else "{value}"
+    tooltip = js("""function(p){
+        const rx = __RX__; const ry = __RY__;
+        return '<b>' + __TIT__ + '</b><br>' + __NX__ + ': ' + rx[p.value[0]] +
+               '<br>' + __NY__ + ': ' + ry[p.value[1]] +
+               '<br>Concentração: ' + Number(p.value[2]).toFixed(3).replace('.', ',') + '%';
+    }""".replace("__RX__", json.dumps(rx, ensure_ascii=False))
+         .replace("__RY__", json.dumps(ry, ensure_ascii=False))
+         .replace("__TIT__", json.dumps(titulo or f"{nome_x} × {nome_y}", ensure_ascii=False))
+         .replace("__NX__", json.dumps(nome_x, ensure_ascii=False))
+         .replace("__NY__", json.dumps(nome_y, ensure_ascii=False)))
 
-    options = {
+    opcoes = {
+        "tooltip": {"position": "top", "formatter": tooltip},
+        "grid": {"left": "17%", "right": "8%", "bottom": "25%", "top": "8%", "containLabel": True},
+        "xAxis": {"type": "category", "name": nome_x, "nameLocation": "middle", "nameGap": 40,
+                  "data": rx, "splitLine": {"show": False},
+                  "axisLabel": {"rotate": 45, "interval": 3, "fontSize": 9}},
+        "yAxis": {"type": "category", "name": nome_y, "nameLocation": "middle", "nameGap": 55,
+                  "data": ry, "splitLine": {"show": False}, "axisLabel": {"fontSize": 9}},
+        "visualMap": {"min": 0, "max": float(pct.max()), "calculable": True, "orient": "horizontal",
+                      "left": "center", "bottom": "0%", "dimension": 2, "text": ["Maior", "Menor"],
+                      "inRange": {"color": ["#f7f1fb", "#b388c9", "#702082", "#2d0b36"]}},
+        "series": [{"name": "Concentração", "type": "heatmap", "data": dados,
+                    "emphasis": {"itemStyle": {"shadowBlur": 8}}}],
+    }
+    grafico(opcoes, altura, chave)
+    st.caption(f"Amostras utilizadas: {fmt_br(len(x), 0)}")
+
+
+def barras_agrupadas(categorias, series_dict, cores, titulo, subtitulo, unidade, chave, rotacao=35):
+    """Barras agrupadas (uma série por modo) com rótulos em formato BR."""
+    series = []
+    for nome, valores in series_dict.items():
+        series.append({
+            "name": nome, "type": "bar", "barMaxWidth": 28, "data": valores,
+            "itemStyle": {"color": cores[nome]},
+            "label": {"show": True, "position": "top", "fontSize": 9, "formatter": FMT_DEC},
+        })
+    opcoes = {
+        "title": {"text": titulo, "subtext": subtitulo, "left": "center", "top": "2%",
+                  "textStyle": {"fontSize": 16}},
+        "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}},
+        "legend": {"top": "14%", "data": list(series_dict.keys())},
+        "grid": {"left": "8%", "right": "5%", "bottom": "22%", "top": "26%", "containLabel": True},
+        "xAxis": {"type": "category", "data": categorias,
+                  "axisLabel": {"rotate": rotacao, "interval": 0, "fontSize": 9}},
+        "yAxis": {"type": "value", "name": unidade, "splitLine": {"show": False}},
+        "series": series,
+    }
+    grafico(opcoes, "500px", chave)
+
+
+# =======================================================================
+# 5. GRÁFICOS TEMPORAIS
+# =======================================================================
+def plotar_grafico_duplo_eixo(dados, prefixo, suf_esq, suf_dir, titulo, chave):
+    """Dois eixos livres: variável esquerda (área) × variável direita (linha)."""
+    a = get_serie(dados, f"{prefixo}{suf_esq}")
+    b = get_serie(dados, f"{prefixo}{suf_dir}")
+    if a is None or b is None:
+        st.warning("Não foi possível extrair as variáveis selecionadas.")
+        return
+    passo = passo_decimacao(max(len(a), len(b)))
+    ta = np.arange(len(a))[::passo] * DT_AMOSTRAGEM
+    tb = np.arange(len(b))[::passo] * DT_AMOSTRAGEM
+    nome_e, nome_d = rotulo_var(suf_esq), rotulo_var(suf_dir)
+
+    tooltip = js("""function(params){
+        if (!params || !params.length) return '';
+        let r = '<b>Tempo: ' + Number(params[0].value[0]).toFixed(2).replace('.', ',') + ' s</b><br/>';
+        params.forEach(function(it){
+            if (!it.value || it.value[1] == null) return;
+            r += it.marker + ' ' + it.seriesName + ': <b>' +
+                 Number(it.value[1]).toFixed(2).replace('.', ',') + '</b><br/>';
+        });
+        return r; }""")
+
+    opcoes = {
         "title": {"text": titulo, "left": "center"},
-        "tooltip": {
-            "trigger": "axis",
-            "axisPointer": {"type": "cross"},
-            "formatter": JsCode(f"""
-                (params) => {{
-                    if (!params || params.length === 0) return '';
-                    let tempo = params[0].value[0];
-                    let res = '<b>Tempo: ' + Number(tempo).toFixed(2) + ' s</b><br/>';
-                    params.forEach(item => {{
-                        let val = Number(item.value[1]).toFixed(2);
-                        let unid = item.seriesIndex === 0 ? '{unidade_esq}' : '{unidade_dir}';
-                        res += item.marker + ' ' + item.seriesName + ': <b>' + val + ' ' + unid + '</b><br/>';
-                    }});
-                    return res;
-                }}
-            """).js_code,
-        },
-        "legend": {
-            "top": "8%",
-            "data": [nome_eixo_esq, nome_eixo_dir],
-        },
-        "grid": {"left": "6%", "right": "6%", "bottom": "15%", "containLabel": True},
-        "xAxis": [
-            {
-                "type": "value",
-                "name": "Tempo (s)",
-                "nameLocation": "middle",
-                "nameGap": 30,
-                "min": 0,
-                "axisLabel": {"formatter": "{value} s"},
-                "splitLine": {"show": True, "lineStyle": {"type": "dashed"}},
-            }
-        ],
+        "tooltip": {"trigger": "axis", "axisPointer": {"type": "cross"}, "formatter": tooltip},
+        "legend": {"top": "8%", "data": [nome_e, nome_d]},
+        "grid": {"left": "6%", "right": "6%", "bottom": "15%", "top": "18%", "containLabel": True},
+        "xAxis": [{"type": "value", "name": "Tempo (s)", "nameLocation": "middle", "nameGap": 30,
+                   "min": 0, "axisLabel": {"formatter": "{value} s"},
+                   "splitLine": {"show": True, "lineStyle": {"type": "dashed"}}}],
         "yAxis": [
-            {
-                "type": "value",
-                "name": f"{nome_eixo_esq} ({unidade_esq})" if unidade_esq and unidade_esq not in nome_eixo_esq else nome_eixo_esq,
-                "position": "left",
-                "scale": True,
-                "axisLabel": {"formatter": fmt_esq},
-                "axisLine": {"show": True, "lineStyle": {"color": "#4b7bec"}},
-                "splitLine": {"show": True, "lineStyle": {"type": "dashed"}},
-            },
-            {
-                "type": "value",
-                "name": f"{nome_eixo_dir} ({unidade_dir})" if unidade_dir and unidade_dir not in nome_eixo_dir else nome_eixo_dir,
-                "position": "right",
-                "scale": True,
-                "axisLabel": {"formatter": fmt_dir},
-                "axisLine": {"show": True, "lineStyle": {"color": "#20bf6b"}},
-                "splitLine": {"show": False},
-            },
+            {"type": "value", "name": nome_e, "position": "left", "scale": True,
+             "axisLine": {"show": True, "lineStyle": {"color": "#4b7bec"}},
+             "splitLine": {"show": True, "lineStyle": {"type": "dashed"}}},
+            {"type": "value", "name": nome_d, "position": "right", "scale": True,
+             "axisLine": {"show": True, "lineStyle": {"color": "#20bf6b"}},
+             "splitLine": {"show": False}},
         ],
-        "dataZoom": [
-            {"type": "inside", "xAxisIndex": 0},
-            {"type": "slider", "xAxisIndex": 0, "bottom": "2%"},
-        ],
+        "dataZoom": [{"type": "inside", "xAxisIndex": 0},
+                     {"type": "slider", "xAxisIndex": 0, "bottom": "2%"}],
         "series": [
-            {
-                "name": nome_eixo_esq,
-                "type": "line",
-                "yAxisIndex": 0,
-                "symbolSize": 0,
-                "itemStyle": {"color": "#4b7bec"},
-                "areaStyle": {
-                    "color": {
-                        "type": "linear",
-                        "x": 0, "y": 0, "x2": 0, "y2": 1,
-                        "colorStops": [
-                            {"offset": 0, "color": "rgba(75, 123, 236, 0.6)"},
-                            {"offset": 1, "color": "rgba(75, 123, 236, 0.05)"}
-                        ]
-                    }
-                },
-                "data": serie_esq,
-            },
-            {
-                "name": nome_eixo_dir,
-                "type": "line",
-                "yAxisIndex": 1,
-                "symbolSize": 0,
-                "itemStyle": {"color": "#20bf6b"},
-                "lineStyle": {"width": 2.5},
-                "data": serie_dir,
-            },
+            {"name": nome_e, "type": "line", "yAxisIndex": 0, "symbolSize": 0,
+             "itemStyle": {"color": "#4b7bec"},
+             "areaStyle": {"color": {"type": "linear", "x": 0, "y": 0, "x2": 0, "y2": 1,
+                                     "colorStops": [{"offset": 0, "color": "rgba(75,123,236,0.6)"},
+                                                    {"offset": 1, "color": "rgba(75,123,236,0.05)"}]}},
+             "data": to_pts(ta, a[::passo])},
+            {"name": nome_d, "type": "line", "yAxisIndex": 1, "symbolSize": 0,
+             "itemStyle": {"color": "#20bf6b"}, "lineStyle": {"width": 2.5},
+             "data": to_pts(tb, b[::passo])},
         ],
     }
+    grafico(opcoes, "480px", chave)
 
-    st_echarts(options=options, height="480px", key=key)
 
-# =======================================================================
-# 6. GRÁFICO DE PIZZA (ESTATÍSTICA DAS CONDIÇÕES)
-# =======================================================================
-def plotar_pizza_condicoes(dados_condicoes, titulo="Distribuição das Condições", key=None):
-    pie_data = [{"value": int(v), "name": str(k)} for k, v in dados_condicoes.items() if v > 0]
-    total_pontos = sum(item["value"] for item in pie_data) if pie_data else 1
+def _distancia_km(vel: np.ndarray) -> np.ndarray:
+    v = np.nan_to_num(vel) / 3.6 * DT_AMOSTRAGEM
+    return (np.concatenate([[0.0], np.cumsum(v[:-1])])) / 1000.0
 
-    options = {
-        "title": {
-            "text": titulo,
-            "subtext": "Tempo em cada condição",
-            "left": "center",
-        },
-        "tooltip": {
-            "trigger": "item",
-            "formatter": "{a} <br/>{b}: <b>{c} amostras</b> ({d}%)"
-        },
-        "legend": {
-            "orient": "vertical",
-            "left": "left",
-            "formatter": JsCode(f"""
-                (name) => {{
-                    let data = {pie_data};
-                    let total = {total_pontos};
-                    let target = data.find(item => item.name === name);
-                    if (target) {{
-                        let pct = ((target.value / total) * 100).toFixed(1);
-                        return name + ': ' + pct + '%';
-                    }}
-                    return name;
-                }}
-            """).js_code,
-        },
-        "series": [
-            {
-                "name": "Condição",
-                "type": "pie",
-                "radius": "55%",
-                "data": pie_data,
-                "label": {
-                    "show": True,
-                    "formatter": "{b}\n{d}%",
-                    "fontSize": 12,
-                    "fontWeight": "bold"
-                },
-                "labelLine": {"show": True, "length": 15, "length2": 10},
-                "emphasis": {
-                    "itemStyle": {
-                        "shadowBlur": 10,
-                        "shadowOffsetX": 0,
-                        "shadowColor": "rgba(0, 0, 0, 0.5)",
-                    }
-                },
-            }
-        ],
+
+def _intervalos_modo(modos, x, idx_modo):
+    ini, fim = segmentos(modos == idx_modo)
+    passo_x = (x[-1] - x[-2]) if len(x) > 1 else DT_AMOSTRAGEM
+    saida = []
+    for i, f in zip(ini, fim):
+        x0 = float(x[i])
+        x1 = float(x[f]) if f < len(x) else float(x[-1] + passo_x)
+        saida.append([{"xAxis": round(x0, 3)}, {"xAxis": round(x1, 3)}])
+    return saida
+
+
+def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILOS[0],
+                     modos_sel=None, janela=None, eixo_x="Tempo (s)", fases=None):
+    """
+    Velocidade (eixo esquerdo) × variável (eixo direito) com visualização dos modos:
+    faixa de modos alinhada abaixo, sombreado, e/ou linha de velocidade colorida pelo modo.
+    """
+    vel = get_serie(dados, f"{prefixo}Speed_com")
+    dire = get_serie(dados, f"{prefixo}{sufixo_dir}")
+    if vel is None or dire is None:
+        st.warning(f"Não foi possível extrair velocidade ou {rotulo_var(sufixo_dir)}.")
+        return
+    n = min(len(vel), len(dire))
+    if n < 2:
+        st.warning("Não existem amostras suficientes.")
+        return
+    vel, dire = vel[:n], dire[:n]
+    modos = vetor_modos(dados, prefixo, n)
+    por_tempo = eixo_x.startswith("Tempo")
+    x = np.arange(n) * DT_AMOSTRAGEM if por_tempo else _distancia_km(vel)
+
+    i0, i1 = 0, n
+    if janela:
+        i0 = max(0, int(janela[0] / DT_AMOSTRAGEM))
+        i1 = min(n, int(janela[1] / DT_AMOSTRAGEM) + 1)
+    if i1 - i0 < 2:
+        st.warning("Janela de tempo muito curta.")
+        return
+    x, vel, dire, modos = x[i0:i1], vel[i0:i1], dire[i0:i1], modos[i0:i1]
+
+    modos_sel = modos_sel or list(range(1, len(MODOS) + 1))
+    faixa = estilo in (ESTILOS[0], ESTILOS[1], ESTILOS[3])
+    sombra = estilo in (ESTILOS[0], ESTILOS[2])
+    colorida = estilo == ESTILOS[3]
+
+    legenda = ["Velocidade", rotulo_var(sufixo_dir)]
+    series = []
+    for k, m in enumerate(MODOS, start=1):
+        if k not in modos_sel:
+            continue
+        inter = _intervalos_modo(modos, x, k)
+        if not inter:
+            continue
+        legenda.append(m["nome"])
+        base = {"name": m["nome"], "type": "line", "data": [], "symbol": "none",
+                "lineStyle": {"color": m["cor"], "width": 3}, "itemStyle": {"color": m["cor"]}}
+        if sombra:
+            series.append({**base, "xAxisIndex": 0, "yAxisIndex": 0,
+                           "markArea": {"silent": True, "itemStyle": {"color": m["sombra"], "opacity": 0.45},
+                                        "data": inter}})
+        if faixa:
+            series.append({**base, "xAxisIndex": 1, "yAxisIndex": 1,
+                           "markArea": {"silent": True, "itemStyle": {"color": m["cor"], "opacity": 0.92},
+                                        "data": inter}})
+
+    passo = passo_decimacao(len(x))
+    sl = slice(None, None, passo)
+    idx_vel = len(series)
+    serie_vel = {
+        "name": "Velocidade", "type": "line", "xAxisIndex": 0, "yAxisIndex": 0,
+        "data": to_pts(x[sl], vel[sl], modos[sl]), "showSymbol": False, "z": 5,
+        "lineStyle": {"color": COR_VEL, "width": 2.5}, "itemStyle": {"color": COR_VEL},
+        "areaStyle": {"color": {"type": "linear", "x": 0, "y": 0, "x2": 0, "y2": 1,
+                                "colorStops": [{"offset": 0, "color": "rgba(0,119,189,0.15)"},
+                                               {"offset": 1, "color": "rgba(0,119,189,0.02)"}]}},
+        "markPoint": {"symbolSize": 42, "data": [{"type": "max", "name": "Máx"}]},
     }
+    if fases and por_tempo:
+        pts = [{"xAxis": float(t), "name": nome} for nome, t in fases if x[0] <= t <= x[-1]]
+        if pts:
+            serie_vel["markLine"] = {"silent": True, "symbol": "none",
+                                     "lineStyle": {"type": "dashed", "color": "#888"},
+                                     "label": {"formatter": "{b}", "fontSize": 10}, "data": pts}
+    series.append(serie_vel)
+    series.append({
+        "name": rotulo_var(sufixo_dir), "type": "line", "xAxisIndex": 0, "yAxisIndex": 1,
+        "data": to_pts(x[sl], dire[sl]), "showSymbol": False, "z": 6,
+        "lineStyle": {"color": COR_VAR, "width": 2}, "itemStyle": {"color": COR_VAR},
+        "markPoint": {"symbolSize": 42, "data": [{"type": "max", "name": "Máx"}, {"type": "min", "name": "Mín"}]},
+        "markLine": {"silent": True, "symbol": "none", "lineStyle": {"type": "dashed", "color": COR_VAR},
+                     "label": {"formatter": "Média: {c}"}, "data": [{"type": "average", "name": "Média"}]},
+    })
 
-    st_echarts(options=options, height="450px", key=key)
+    rot_x = "Tempo (s)" if por_tempo else "Distância (km)"
+    tooltip = js("""function(params){
+        if (!params || !params.length) return '';
+        const nomes = __NOMES__;
+        let r = '<b>__XL__: ' + Number(params[0].value[0]).toFixed(2).replace('.', ',') + '</b><br/>';
+        params.forEach(function(it){
+            if (!it.value || it.value[1] == null) return;
+            r += it.marker + ' ' + it.seriesName + ': <b>' +
+                 Number(it.value[1]).toFixed(2).replace('.', ',') + '</b><br/>';
+            if (it.value.length > 2 && it.value[2] != null)
+                r += '&nbsp;&nbsp;&nbsp;Modo: ' + nomes[it.value[2]] + '<br/>';
+        });
+        return r; }""".replace("__NOMES__", json.dumps(NOMES_MODO_IDX, ensure_ascii=False))
+                 .replace("__XL__", rot_x))
 
-def extrair_condicoes_automaticamente(vars_dict):
-    resultado = {}
-    for chave, vetor in vars_dict.items():
-        chave_lower = chave.lower()
-        if "condicao" in chave_lower or "cond" in chave_lower:
-            resultado[chave] = int(np.sum(vetor > 0))
+    xmin, xmax = round(float(x[0]), 3), round(float(x[-1]), 3)
+    eixo_base = {"type": "value", "min": xmin, "max": xmax,
+                 "splitLine": {"show": True, "lineStyle": {"type": "dashed", "opacity": 0.35}}}
+    if faixa:
+        grids = [{"left": "7%", "right": "7%", "top": "24%", "height": "46%", "containLabel": True},
+                 {"left": "7%", "right": "7%", "top": "76%", "height": "6%", "containLabel": True}]
+        xaxes = [{**eixo_base, "gridIndex": 0, "axisLabel": {"show": False}},
+                 {**eixo_base, "gridIndex": 1, "name": rot_x, "nameLocation": "middle", "nameGap": 28,
+                  "splitLine": {"show": False}}]
+        yaxes_extra = [{"type": "value", "gridIndex": 1, "min": 0, "max": 1, "show": False}]
+        zoom_idx, altura = [0, 1], "640px"
+    else:
+        grids = [{"left": "7%", "right": "7%", "top": "24%", "bottom": "18%", "containLabel": True}]
+        xaxes = [{**eixo_base, "gridIndex": 0, "name": rot_x, "nameLocation": "middle", "nameGap": 30}]
+        yaxes_extra, zoom_idx, altura = [], [0], "560px"
 
-    if not resultado:
-        for chave, vetor in vars_dict.items():
-            chave_lower = chave.lower()
-            if any(termo in chave_lower for termo in ["boo", "neu", "alt"]):
-                resultado[chave] = int(np.sum(vetor > 0))
-
-    return resultado
-
-# =======================================================================
-# 7. GRÁFICOS DO NOVO MÓDULO DE SIMULAÇÃO
-# =======================================================================
-
-# 7.1 Gráfico de Barras Horizontais Empilhadas (Tipo Figura 1 com mesmas cores)
-def plotar_barras_horizontais_condicoes(ciclos, dados_segmentos):
-    """
-    ciclos: Lista com os nomes dos ciclos/testes (ex: ['EB HGW', 'ITEMM HGW', 'EB FTP', 'ITEMM FTP'])
-    dados_segmentos: Dicionário contendo os valores em porcentagem (%) para cada categoria
-    """
-    options = {
-        "title": {
-            "text": "Distribuição Percentual por Condição (FTP-75 e Highway)",
-            "left": "center"
-        },
-        "tooltip": {
-            "trigger": "axis",
-            "axisPointer": {"type": "shadow"},
-            "formatter": JsCode("""
-                (params) => {
-                    let res = '<b>' + params[0].name + '</b><br/>';
-                    params.forEach(item => {
-                        res += item.marker + ' ' + item.seriesName + ': <b>' + item.value + '%</b><br/>';
-                    });
-                    return res;
-                }
-            """).js_code
-        },
-        "legend": {
-            "top": "8%",
-            "data": ["Boost", "Neutro / Cargas", "Alternador", "Frenagem Reg."]
-        },
-        "grid": {
-            "left": "12%",
-            "right": "8%",
-            "bottom": "10%",
-            "top": "18%",
-            "containLabel": True
-        },
-        "xAxis": {
-            "type": "value",
-            "max": 100,
-            "axisLabel": {"formatter": "{value}%"},
-            "splitLine": {"show": True, "lineStyle": {"type": "dashed"}}
-        },
-        "yAxis": {
-            "type": "category",
-            "data": ciclos,
-            "axisLine": {"show": True}
-        },
-        "series": [
-            {
-                "name": "Boost",
-                "type": "bar",
-                "stack": "total",
-                "itemStyle": {"color": COR_BOOST, "borderColor": "#333", "borderWidth": 0.5},
-                "label": {"show": True, "formatter": "{c}%", "color": "#fff", "fontWeight": "bold"},
-                "data": [round(float(v), 2) for v in dados_segmentos["Boost"]]
-            },
-            {
-                "name": "Neutro / Cargas",
-                "type": "bar",
-                "stack": "total",
-                "itemStyle": {"color": COR_NEUTRO, "borderColor": "#333", "borderWidth": 0.5},
-                "label": {"show": True, "formatter": "{c}%", "color": "#fff", "fontWeight": "bold"},
-                "data": [round(float(v), 2) for v in dados_segmentos["Neutro"]]
-            },
-            {
-                "name": "Alternador",
-                "type": "bar",
-                "stack": "total",
-                "itemStyle": {"color": COR_ALTERNADOR, "borderColor": "#333", "borderWidth": 0.5},
-                "label": {"show": True, "formatter": "{c}%", "color": "#fff", "fontWeight": "bold"},
-                "data": [round(float(v), 2) for v in dados_segmentos["Alternador"]]
-            },
-            {
-                "name": "Frenagem Reg.",
-                "type": "bar",
-                "stack": "total",
-                "itemStyle": {"color": COR_REGEN, "borderColor": "#333", "borderWidth": 0.5},
-                "label": {"show": True, "formatter": "{c}%", "color": "#fff", "fontWeight": "bold"},
-                "data": [round(float(v), 2) for v in dados_segmentos["Frenagem"]]
-            }
-        ]
-    }
-    st_echarts(options=options, height="450px")
-
-# 7.2 Gráfico de Barras com Eixo Positivo e Negativo (Balanço de Carga por Modo)
-def plotar_balanco_carga_positivo_negativo(categorias_ciclo, dados_balanco):
-    """
-    categorias_ciclo: Lista com os ciclos ['ITEMM FTP', 'EB FTP', 'ITEMM HGW', 'EB HGW']
-    dados_balanco: Dicionário contendo os valores positivos e negativos de cada modo
-    """
-    options = {
-        "title": {
-            "text": "Balanço de Carga por Modo (FTP-75 e Highway)",
-            "left": "center"
-        },
-        "tooltip": {
-            "trigger": "axis",
-            "axisPointer": {"type": "shadow"}
-        },
-        "legend": {
-            "top": "8%",
-            "data": ["Cargas Auxiliares", "Boost", "Frenagem Regenerativa", "Alternador"]
-        },
-        "grid": {
-            "left": "6%",
-            "right": "6%",
-            "bottom": "10%",
-            "top": "18%",
-            "containLabel": True
-        },
-        "xAxis": {
-            "type": "category",
-            "data": categorias_ciclo,
-            "axisTick": {"alignWithLabel": True},
-            "axisLine": {"onZero": True}  # Coloca a linha do eixo exatamente no 0
-        },
-        "yAxis": {
-            "type": "value",
-            "name": "Balanço de Carga (Ah)",
-            "nameLocation": "middle",
-            "nameGap": 35,
-            "splitLine": {"show": True, "lineStyle": {"type": "dashed"}}
-        },
-        "series": [
-            {
-                "name": "Cargas Auxiliares",
-                "type": "bar",
-                "itemStyle": {"color": COR_CARGAS_AUX, "borderColor": "#000", "borderWidth": 0.5},
-                "label": {"show": True, "position": "bottom", "fontWeight": "bold"},
-                "data": [round(float(v), 2) for v in dados_balanco["Cargas Auxiliares"]]
-            },
-            {
-                "name": "Boost",
-                "type": "bar",
-                "itemStyle": {"color": COR_BOOST, "borderColor": "#000", "borderWidth": 0.5},
-                "label": {"show": True, "position": "bottom", "fontWeight": "bold"},
-                "data": [round(float(v), 2) for v in dados_balanco["Boost"]]
-            },
-            {
-                "name": "Frenagem Regenerativa",
-                "type": "bar",
-                "itemStyle": {"color": COR_REGEN, "borderColor": "#000", "borderWidth": 0.5},
-                "label": {"show": True, "position": "top", "fontWeight": "bold"},
-                "data": [round(float(v), 2) for v in dados_balanco["Frenagem"]]
-            },
-            {
-                "name": "Alternador",
-                "type": "bar",
-                "itemStyle": {"color": COR_ALTERNADOR, "borderColor": "#000", "borderWidth": 0.5},
-                "label": {"show": True, "position": "top", "fontWeight": "bold"},
-                "data": [round(float(v), 2) for v in dados_balanco["Alternador"]]
-            }
-        ]
-    }
-    st_echarts(options=options, height="480px")
-
-
-def plotar_emissoes_e_tempos(vars_ftp, vars_hgw, nome_ftp, nome_hgw):
-    """
-    Exibe:
-    1. Emissão média, emissão de referência e CO2 total.
-    2. Tempos de Start-Stop e Cut-off.
-    3. Quantidade de eventos Start-Stop válidos.
-
-    Os nomes dos arquivos MAT são apresentados nos subtítulos.
-    """
-
-    ciclos = [
-        {
-            "nome": "ITEMM FTP",
-            "dados": vars_ftp or {},
-            "prefixo": "f"
-        },
-        {
-            "nome": "ITEMM HGW",
-            "dados": vars_hgw or {},
-            "prefixo": "h"
-        }
+    yaxes = [
+        {"type": "value", "gridIndex": 0, "name": "Velocidade (km/h)", "nameLocation": "middle",
+         "nameGap": 45, "position": "left", "min": 0, "scale": True,
+         "axisLine": {"show": True, "lineStyle": {"color": COR_VEL}},
+         "splitLine": {"show": True, "lineStyle": {"type": "dotted", "opacity": 0.4}}},
+        {"type": "value", "gridIndex": 0, "name": rotulo_var(sufixo_dir), "nameLocation": "middle",
+         "nameGap": 55, "position": "right", "scale": True,
+         "axisLine": {"show": True, "lineStyle": {"color": COR_VAR}},
+         "axisLabel": {"formatter": FMT_AXIS_BR}, "splitLine": {"show": False}},
     ]
+    # a faixa usa yAxisIndex 1 -> reordena: índice 1 precisa ser a faixa quando existe
+    if faixa:
+        yaxes = [yaxes[0], yaxes_extra[0], yaxes[1]]
+        for s in series:
+            if s["name"] == rotulo_var(sufixo_dir):
+                s["yAxisIndex"] = 2
+            if s["name"] in ("Velocidade",):
+                s["yAxisIndex"] = 0
 
-    nomes_ciclos = [ciclo["nome"] for ciclo in ciclos]
-
-    titulo_arquivos = (
-        f"FTP: {nome_ftp} | HIGHWAY: {nome_hgw}"
-    )
-
-    # ---------------------------------------------------------
-    # EXTRAÇÃO DOS VALORES ESCALARES
-    # ---------------------------------------------------------
-    def obter_valor(dados, nome):
-        bruto = dados.get(nome)
-
-        if bruto is None:
-            return None
-
-        try:
-            valores = np.asarray(bruto, dtype=float).squeeze()
-
-            if valores.size == 0:
-                return None
-
-            valor = float(valores.flat[0])
-
-            return valor if np.isfinite(valor) else None
-
-        except (TypeError, ValueError):
-            return None
-
-    # Arredondamento para duas casas decimais
-    def arredondar_lista(lista):
-        return [
-            round(valor, 2) if valor is not None else None
-            for valor in lista
-        ]
-
-    # Formatador JavaScript: duas casas decimais e vírgula
-    formatador_decimal = JsCode("""
-        function(params) {
-            if (params.value == null || isNaN(params.value)) {
-                return '';
-            }
-
-            return Number(params.value).toFixed(2).replace('.', ',');
+    opcoes = {
+        "title": {"text": "Velocidade × variável × modos operacionais", "subtext": subtitulo,
+                  "left": "center", "top": "1%", "textStyle": {"fontSize": 16, "fontWeight": "bold"},
+                  "subtextStyle": {"fontSize": 11, "color": "#777"}},
+        "tooltip": {"trigger": "axis", "axisPointer": {"type": "cross"}, "formatter": tooltip},
+        "axisPointer": {"link": [{"xAxisIndex": "all"}]},
+        "legend": {"type": "scroll", "top": "12%", "left": "center", "data": legenda},
+        "grid": grids, "xAxis": xaxes, "yAxis": yaxes,
+        "dataZoom": [{"type": "inside", "xAxisIndex": zoom_idx},
+                     {"type": "slider", "xAxisIndex": zoom_idx, "bottom": "1%"}],
+        "series": series,
+    }
+    if colorida:
+        opcoes["visualMap"] = {
+            "type": "piecewise", "show": False, "seriesIndex": idx_vel, "dimension": 2,
+            "pieces": [{"value": 0, "color": COR_VEL}] +
+                      [{"value": k, "color": m["cor"]} for k, m in enumerate(MODOS, start=1)],
         }
-    """)
-
-    formatador_tempo = JsCode("""
-        function(params) {
-            if (params.value == null || isNaN(params.value)) {
-                return '';
-            }
-
-            return Number(params.value).toFixed(2).replace('.', ',') + ' s';
-        }
-    """)
-
-    formatador_tooltip = JsCode("""
-        function(value) {
-            if (value == null || isNaN(value)) {
-                return 'N/D';
-            }
-
-            return Number(value).toFixed(2).replace('.', ',');
-        }
-    """)
-
-    # =========================================================
-    # 1. DADOS DE EMISSÃO
-    # =========================================================
-    emissao_media = []
-    emissao_referencia = []
-    co2_total = []
-
-    for ciclo in ciclos:
-        dados = ciclo["dados"]
-        prefixo = ciclo["prefixo"]
-
-        emissao_media.append(
-            obter_valor(dados, f"{prefixo}emissao_media_g_km")
-        )
-
-        emissao_referencia.append(
-            obter_valor(dados, f"{prefixo}emissao_ref")
-        )
-
-        co2_total.append(
-            obter_valor(dados, f"{prefixo}co2_total_g")
-        )
-
-    # Arredondamento dos dados
-    emissao_media = arredondar_lista(emissao_media)
-    emissao_referencia = arredondar_lista(emissao_referencia)
-    co2_total = arredondar_lista(co2_total)
-
-    # ---------------------------------------------------------
-    # GRÁFICO DE EMISSÕES
-    # ---------------------------------------------------------
-    possui_emissao = any(
-        valor is not None
-        for lista in [
-            emissao_media,
-            emissao_referencia,
-            co2_total
-        ]
-        for valor in lista
-    )
-
-    if possui_emissao:
-
-        opcoes_emissao = {
-            "title": {
-                "text": "Emissões de CO₂",
-                "subtext": titulo_arquivos,
-                "left": "center",
-                "top": "1%",
-                "textStyle": {
-                    "fontSize": 17,
-                    "fontWeight": "bold"
-                },
-                "subtextStyle": {
-                    "fontSize": 11,
-                    "color": "#757575"
-                }
-            },
-
-            "tooltip": {
-                "trigger": "axis",
-                "axisPointer": {
-                    "type": "shadow"
-                },
-                "valueFormatter": formatador_tooltip
-            },
-
-            "legend": {
-                "top": "16%",
-                "data": [
-                    "Emissão média",
-                    "Referência",
-                    "CO₂ total"
-                ]
-            },
-
-            "grid": {
-                "left": "10%",
-                "right": "15%",
-                "bottom": "12%",
-                "top": "28%",
-                "containLabel": True
-            },
-
-            "xAxis": {
-                "type": "category",
-                "data": nomes_ciclos,
-                "axisLabel": {
-                    "fontSize": 12
-                }
-            },
-
-            "yAxis": [
-                {
-                    "type": "value",
-                    "name": "Emissão (g/km)",
-                    "position": "left",
-                    "nameLocation": "middle",
-                    "nameGap": 45
-                },
-                {
-                    "type": "value",
-                    "name": "CO₂ total (g)",
-                    "position": "right",
-                    "nameLocation": "middle",
-                    "nameGap": 55,
-                    "splitLine": {"show": False
-                    }
-                }
-            ],
-
-            "series": [
-                {
-                    "name": "Emissão média",
-                    "type": "bar",
-                    "yAxisIndex": 0,
-                    "data": emissao_media,
-                    "barMaxWidth": 45,
-                    "itemStyle": {
-                        "color": "#702082"
-                    },
-                    "label": {
-                        "show": True,
-                        "position": "top",
-                        "formatter": formatador_decimal
-                    }
-                },
-                {
-                    "name": "Referência",
-                    "type": "bar",
-                    "yAxisIndex": 0,
-                    "data": emissao_referencia,
-                    "barMaxWidth": 45,
-                    "itemStyle": {
-                        "color": "#9e9e9e"
-                    },
-                    "label": {
-                        "show": True,
-                        "position": "top",
-                        "formatter": formatador_decimal
-                    }
-                },
-                {
-                    "name": "CO₂ total",
-                    "type": "line",
-                    "yAxisIndex": 1,
-                    "data": co2_total,
-                    "symbol": "circle",
-                    "symbolSize": 10,
-                    "lineStyle": {
-                        "width": 3,
-                        "color": "#008848"
-                    },
-                    "itemStyle": {
-                        "color": "#008848"
-                    },
-                    "label": {
-                        "show": True,
-                        "position": "top",
-                        "formatter": formatador_decimal
-                    }
-                }
-            ]
-        }
-
-        st_echarts(
-            options=opcoes_emissao,
-            height="440px",
-            key="grafico_emissoes_itemm"
-        )
-
-    else:
-        st.warning(
-            "Não foram encontrados dados de emissão nos arquivos MAT."
-        )
-
-    # =========================================================
-    # 2. DADOS DE START-STOP E CUT-OFF
-    # =========================================================
-    tempo_start_stop = []
-    tempo_cutoff = []
-    eventos_start_stop = []
-
-    for ciclo in ciclos:
-        dados = ciclo["dados"]
-        prefixo = ciclo["prefixo"]
-
-        tempo_start_stop.append(
-            obter_valor(dados, f"{prefixo}s_start_stop")
-        )
-
-        tempo_cutoff.append(
-            obter_valor(dados, f"{prefixo}s_cut")
-        )
-
-        eventos_start_stop.append(
-            obter_valor(dados, f"{prefixo}_ss_eventos_validos")
-        )
-
-    # Arredondamento dos tempos
-    tempo_start_stop = arredondar_lista(tempo_start_stop)
-    tempo_cutoff = arredondar_lista(tempo_cutoff)
-
-    # ---------------------------------------------------------
-    # GRÁFICO DE TEMPOS
-    # ---------------------------------------------------------
-    possui_tempos = any(
-        valor is not None
-        for lista in [
-            tempo_start_stop,
-            tempo_cutoff
-        ]
-        for valor in lista
-    )
-
-    if possui_tempos:
-
-        opcoes_tempos = {
-            "title": {
-                "text": "Tempos de Start-Stop e Cut-off",
-                "subtext": titulo_arquivos,
-                "left": "center",
-                "top": "1%",
-                "textStyle": {
-                    "fontSize": 17,
-                    "fontWeight": "bold"
-                },
-                "subtextStyle": {
-                    "fontSize": 11,
-                    "color": "#757575"
-                }
-            },
-
-            "tooltip": {
-                "trigger": "axis",
-                "axisPointer": {
-                    "type": "shadow"
-                },
-                "valueFormatter": JsCode("""
-                    function(value) {
-                        if (value == null || isNaN(value)) {
-                            return 'N/D';
-                        }
-
-                        return Number(value).toFixed(2).replace('.', ',') + ' s';
-                    }
-                """)
-            },
-
-            "legend": {
-                "top": "16%",
-                "data": [
-                    "Start-Stop",
-                    "Cut-off"
-                ]
-            },
-
-            "grid": {
-                "left": "10%",
-                "right": "5%",
-                "bottom": "12%",
-                "top": "28%",
-                "containLabel": True
-            },
-
-            "xAxis": {
-                "type": "category",
-                "data": nomes_ciclos,
-                "axisLabel": {
-                    "fontSize": 12
-                }
-            },
-
-            "yAxis": {
-                "type": "value",
-                "name": "Tempo (s)",
-                "nameLocation": "middle",
-                "nameGap": 45
-            },
-
-            "series": [
-                {
-                    "name": "Start-Stop",
-                    "type": "bar",
-                    "data": tempo_start_stop,
-                    "barMaxWidth": 50,
-                    "itemStyle": {
-                        "color": "#f39200"
-                    },
-                    "label": {
-                        "show": True,
-                        "position": "top",
-                        "formatter": formatador_tempo
-                    }
-                },
-                {
-                    "name": "Cut-off",
-                    "type": "bar",
-                    "data": tempo_cutoff,
-                    "barMaxWidth": 50,
-                    "itemStyle": {
-                        "color": "#008848"
-                    },
-                    "label": {
-                        "show": True,
-                        "position": "top",
-                        "formatter": formatador_tempo
-                    }
-                }
-            ]
-        }
-
-        st_echarts(
-            options=opcoes_tempos,
-            height="420px",
-            key="grafico_tempos_start_stop_cutoff"
-        )
-
-    else:
-        st.warning(
-            "Não foram encontrados dados de tempo de Start-Stop ou Cut-off."
-        )
-
-    # =========================================================
-    # 3. QUANTIDADE DE EVENTOS START-STOP
-    # =========================================================
-    st.subheader("Eventos de Start-Stop")
-
-    col1, col2 = st.columns(2)
-
-    for coluna, nome_ciclo, quantidade in zip(
-        [col1, col2],
-        nomes_ciclos,
-        eventos_start_stop
-    ):
-
-        with coluna:
-
-            if quantidade is not None:
-                valor_exibido = (
-                    f"{quantidade:,.0f}".replace(",", ".")
-                )
-            else:
-                valor_exibido = "N/D"
-
-            st.metric(
-                label=f"Eventos válidos — {nome_ciclo}",
-                value=valor_exibido
-            )
-
-
-
-
-def plotar_kpis_ciclo(variaveis, prefixo, nome_ciclo):
-    """
-    Exibe seis KPIs do ciclo:
-
-    Primeira linha:
-        - Distância percorrida (km)
-        - Combustível consumido (L)
-        - Autonomia do ciclo (km/L)
-
-    Segunda linha:
-        - Capacidade da bateria (Ah)
-        - SOC mínimo medido (%)
-        - SOC máximo medido (%)
-    """
-
-    # ---------------------------------------------------------
-    # FUNÇÃO PARA EXTRAIR VALORES ESCALARES
-    # ---------------------------------------------------------
-    def obter_valor(nome_variavel):
-        bruto = variaveis.get(nome_variavel)
-
-        if bruto is None:
-            return None
-
-        try:
-            valores = np.asarray(bruto, dtype=float).ravel()
-            valores = valores[np.isfinite(valores)]
-
-            if valores.size == 0:
-                return None
-
-            return float(valores[0])
-
-        except (TypeError, ValueError):
-            return None
-
-    # ---------------------------------------------------------
-    # FUNÇÃO PARA EXTRAIR SÉRIES TEMPORAIS
-    # ---------------------------------------------------------
-    def obter_serie(nome_variavel):
-        bruto = variaveis.get(nome_variavel)
-
-        if bruto is None:
-            return None
-
-        try:
-            valores = np.asarray(bruto, dtype=float).ravel()
-            valores = valores[np.isfinite(valores)]
-
-            if valores.size == 0:
-                return None
-
-            return valores
-
-        except (TypeError, ValueError):
-            return None
-
-    # ---------------------------------------------------------
-    # FORMATAÇÃO NUMÉRICA BRASILEIRA
-    # ---------------------------------------------------------
-    def formatar_br(valor):
-        if valor is None:
-            return "N/D"
-
-        return (
-            f"{valor:,.2f}"
-            .replace(",", "X")
-            .replace(".", ",")
-            .replace("X", ".")
-        )
-
-    # =========================================================
-    # 1. EXTRAÇÃO DOS INDICADORES DO CICLO
-    # =========================================================
-
-    distancia = obter_valor(
-        f"{prefixo}distancia_total_km"
-    )
-
-    combustivel = obter_valor(
-        f"{prefixo}litros_totais"
-    )
-
-    autonomia = obter_valor(
-        f"{prefixo}autonomia_final"
-    )
-
-    # =========================================================
-    # 2. CAPACIDADE DA BATERIA
-    # =========================================================
-
-    capacidade_bateria = obter_valor(
-        f"{prefixo}Capacidade_Ah"
-    )
-
-    # =========================================================
-    # 3. SOC MÍNIMO E MÁXIMO MEDIDOS
-    # =========================================================
-
-    serie_soc = obter_serie(
-        f"{prefixo}SOC_calc"
-    )
-
-    if serie_soc is not None:
-
-        soc_min = float(np.min(serie_soc))
-        soc_max = float(np.max(serie_soc))
-
-        # Verifica se o SOC está normalizado entre 0 e 1
-        if soc_min >= 0 and soc_max <= 1:
-            soc_min *= 100
-            soc_max *= 100
-
-    else:
-        soc_min = None
-        soc_max = None
-
-    # =========================================================
-    # 4. PRIMEIRA LINHA DE KPIs
-    # =========================================================
+    grafico(opcoes, altura, chave)
+
+
+def grafico_sobreposto(dados_a, dados_b, nome_a, nome_b, prefixo, sufixo, eixo_x, chave):
+    """Dois ensaios no mesmo gráfico (velocidade à esquerda, variável à direita)."""
+    por_tempo = eixo_x.startswith("Tempo")
+    series, legenda = [], []
+    estilos = [("A", dados_a, "solid", 1.0), ("B", dados_b, "dashed", 0.75)]
+    for rot, d, traco, _ in estilos:
+        v = get_serie(d, f"{prefixo}Speed_com")
+        y = get_serie(d, f"{prefixo}{sufixo}")
+        if v is None or y is None:
+            st.warning(f"Ensaio {rot}: variáveis ausentes.")
+            return
+        n = min(len(v), len(y))
+        v, y = v[:n], y[:n]
+        x = np.arange(n) * DT_AMOSTRAGEM if por_tempo else _distancia_km(v)
+        sl = slice(None, None, passo_decimacao(n))
+        nv, ny = f"Velocidade — {rot}", f"{rotulo_var(sufixo)} — {rot}"
+        legenda += [nv, ny]
+        series.append({"name": nv, "type": "line", "yAxisIndex": 0, "showSymbol": False,
+                       "data": to_pts(x[sl], v[sl]),
+                       "lineStyle": {"color": COR_VEL, "width": 2, "type": traco},
+                       "itemStyle": {"color": COR_VEL}})
+        series.append({"name": ny, "type": "line", "yAxisIndex": 1, "showSymbol": False,
+                       "data": to_pts(x[sl], y[sl]),
+                       "lineStyle": {"color": COR_VAR, "width": 2, "type": traco},
+                       "itemStyle": {"color": COR_VAR}})
+    rot_x = "Tempo (s)" if por_tempo else "Distância (km)"
+    opcoes = {
+        "title": {"text": "Ensaios sobrepostos", "subtext": f"A: {nome_a} | B: {nome_b} (B tracejado)",
+                  "left": "center", "subtextStyle": {"fontSize": 11, "color": "#777"}},
+        "tooltip": {"trigger": "axis", "axisPointer": {"type": "cross"}},
+        "legend": {"type": "scroll", "top": "12%", "data": legenda},
+        "grid": {"left": "7%", "right": "7%", "top": "24%", "bottom": "18%", "containLabel": True},
+        "xAxis": {"type": "value", "name": rot_x, "nameLocation": "middle", "nameGap": 30, "min": 0,
+                  "splitLine": {"lineStyle": {"type": "dashed", "opacity": 0.35}}},
+        "yAxis": [{"type": "value", "name": "Velocidade (km/h)", "min": 0, "scale": True,
+                   "axisLine": {"show": True, "lineStyle": {"color": COR_VEL}}},
+                  {"type": "value", "name": rotulo_var(sufixo), "scale": True, "position": "right",
+                   "axisLine": {"show": True, "lineStyle": {"color": COR_VAR}},
+                   "splitLine": {"show": False}}],
+        "dataZoom": [{"type": "inside", "xAxisIndex": 0}, {"type": "slider", "xAxisIndex": 0, "bottom": "2%"}],
+        "series": series,
+    }
+    grafico(opcoes, "520px", chave)
+
+
+def grafico_ah_acumulado(dados, prefixo, subtitulo, chave):
+    """Ah acumulado ao longo do tempo, por modo, e saldo líquido."""
+    corrente = get_serie(dados, f"{prefixo}CorrenteFiltro")
+    if corrente is None:
+        st.warning("Variável de corrente da bateria (CorrenteFiltro) não encontrada.")
+        return
+    n = len(corrente)
+    modos = vetor_modos(dados, prefixo, n)
+    i0 = np.nan_to_num(corrente)
+    t = np.arange(n) * DT_AMOSTRAGEM
+    sl = slice(None, None, passo_decimacao(n))
+
+    series, legenda = [], []
+    for k, m in enumerate(MODOS, start=1):
+        cum = np.cumsum(np.where(modos == k, i0, 0.0)) * DT_AMOSTRAGEM / 3600
+        legenda.append(m["curto"])
+        series.append({"name": m["curto"], "type": "line", "showSymbol": False,
+                       "data": to_pts(t[sl], cum[sl]), "lineStyle": {"color": m["cor"], "width": 2},
+                       "itemStyle": {"color": m["cor"]}, "areaStyle": {"color": m["cor"], "opacity": 0.12}})
+    saldo = np.cumsum(i0) * DT_AMOSTRAGEM / 3600
+    legenda.append("Saldo líquido")
+    series.append({"name": "Saldo líquido", "type": "line", "showSymbol": False,
+                   "data": to_pts(t[sl], saldo[sl]),
+                   "lineStyle": {"color": "#111", "width": 2.5, "type": "dashed"}, "itemStyle": {"color": "#111"}})
+    opcoes = {
+        "title": {"text": "Ah acumulado por modo operacional", "subtext": subtitulo, "left": "center",
+                  "subtextStyle": {"fontSize": 11, "color": "#777"}},
+        "tooltip": {"trigger": "axis", "axisPointer": {"type": "cross"}},
+        "legend": {"top": "12%", "data": legenda},
+        "grid": {"left": "7%", "right": "5%", "top": "24%", "bottom": "18%", "containLabel": True},
+        "xAxis": {"type": "value", "name": "Tempo (s)", "nameLocation": "middle", "nameGap": 30, "min": 0},
+        "yAxis": {"type": "value", "name": "Ah acumulado", "scale": True,
+                  "splitLine": {"lineStyle": {"type": "dashed", "opacity": 0.4}}},
+        "dataZoom": [{"type": "inside"}, {"type": "slider", "bottom": "2%"}],
+        "series": series,
+    }
+    grafico(opcoes, "480px", chave)
+    st.caption("Sinal do Ah conforme a convenção da corrente da bateria nos arquivos MAT "
+               "(nos balanços, Boost e cargas auxiliares aparecem negativos; Alternador e Frenagem positivos).")
+
+
+# =======================================================================
+# 6. KPIs
+# =======================================================================
+def kpis_ciclo(dados, prefixo, nome_ciclo):
+    distancia = get_escalar(dados, f"{prefixo}distancia_total_km")
+    combustivel = get_escalar(dados, f"{prefixo}litros_totais")
+    autonomia = get_escalar(dados, f"{prefixo}autonomia_final")
+    capacidade = get_escalar(dados, f"{prefixo}Capacidade_Ah")
+    soc = soc_percentual(get_serie(dados, f"{prefixo}SOC_calc"))
+    soc_min = soc_max = None
+    if soc is not None:
+        s = soc[np.isfinite(soc)]
+        if s.size:
+            soc_min, soc_max = float(s.min()), float(s.max())
 
     st.subheader(f"Indicadores do ciclo — {nome_ciclo}")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Distância percorrida", f"{fmt_br(distancia)} km" if distancia is not None else "N/D")
+    c2.metric("Combustível consumido", f"{fmt_br(combustivel)} L" if combustivel is not None else "N/D")
+    c3.metric("Autonomia do ciclo", f"{fmt_br(autonomia)} km/L" if autonomia is not None else "N/D")
+    c4, c5, c6 = st.columns(3)
+    c4.metric("Capacidade da bateria", f"{fmt_br(capacidade)} Ah" if capacidade is not None else "N/D")
+    c5.metric("SOC mínimo medido", f"{fmt_br(soc_min)} %" if soc_min is not None else "N/D")
+    c6.metric("SOC máximo medido", f"{fmt_br(soc_max)} %" if soc_max is not None else "N/D")
 
-    col1, col2, col3 = st.columns(3)
 
-    with col1:
-        st.metric(
-            label="Distância percorrida",
-            value=(
-                f"{formatar_br(distancia)} km"
-                if distancia is not None else "N/D"
-            )
-        )
+def calcular_kpis_avancados(dados, prefixo, limiar_dI=5.0):
+    """KPIs derivados: Ah/km por modo, balanço, throughput, C-rate, térmica, resistência, combustível."""
+    k = {}
+    vel = get_serie(dados, f"{prefixo}Speed_com")
+    corr = get_serie(dados, f"{prefixo}CorrenteFiltro")
+    cap = get_escalar(dados, f"{prefixo}Capacidade_Ah")
 
-    with col2:
-        st.metric(
-            label="Combustível consumido",
-            value=(
-                f"{formatar_br(combustivel)} L"
-                if combustivel is not None else "N/D"
-            )
-        )
+    dist = get_escalar(dados, f"{prefixo}distancia_total_km")
+    if dist is None and vel is not None:
+        dist = float(np.nansum(vel) / 3.6 * DT_AMOSTRAGEM / 1000)
+    k["dist"] = dist
 
-    with col3:
-        st.metric(
-            label="Autonomia do ciclo",
-            value=(
-                f"{formatar_br(autonomia)} km/L"
-                if autonomia is not None else "N/D"
-            )
-        )
+    caps = {m["curto"]: get_escalar(dados, f"{prefixo}{m['cap']}") for m in MODOS}
+    k["caps"] = caps
+    k["ah_km"] = {n: (c / dist if (c is not None and dist) else None) for n, c in caps.items()}
+    validos = [c for c in caps.values() if c is not None]
+    k["saldo_modos"] = float(sum(validos)) if validos else None
 
-    # =========================================================
-    # 5. SEGUNDA LINHA DE KPIs
-    # =========================================================
+    soc = soc_percentual(get_serie(dados, f"{prefixo}SOC_calc"))
+    k["d_soc_ah"] = None
+    if soc is not None and cap:
+        s = soc[np.isfinite(soc)]
+        if s.size > 1:
+            k["d_soc_ah"] = float((s[-1] - s[0]) / 100 * cap)
 
-    col4, col5, col6 = st.columns(3)
+    k["throughput"] = float(np.nansum(np.abs(corr)) * DT_AMOSTRAGEM / 3600) if corr is not None else None
+    k["crate_carga"] = k["crate_desc"] = None
+    if corr is not None and cap:
+        c = corr[np.isfinite(corr)] / cap
+        if c.size:
+            k["crate_carga"], k["crate_desc"] = float(c.max()), float(c.min())
 
-    with col4:
-        st.metric(
-            label="Capacidade da bateria",
-            value=(
-                f"{formatar_br(capacidade_bateria)} Ah"
-                if capacidade_bateria is not None else "N/D"
-            )
-        )
+    temp = get_serie(dados, f"{prefixo}TempBattery_com")
+    k["t_max"] = k["taxa_aq"] = None
+    if temp is not None:
+        tf = temp[np.isfinite(temp)]
+        if tf.size > 1:
+            k["t_max"] = float(tf.max())
+            minutos = len(temp) * DT_AMOSTRAGEM / 60
+            k["taxa_aq"] = float((tf[-1] - tf[0]) / minutos) if minutos > 0 else None
 
-    with col5:
-        st.metric(
-            label="SOC mínimo medido",
-            value=(
-                f"{formatar_br(soc_min)} %"
-                if soc_min is not None else "N/D"
-            )
-        )
+    k["r_int"] = None
+    volt = get_serie(dados, f"{prefixo}TensaoChumbo_com")
+    if corr is not None and volt is not None:
+        n = min(len(corr), len(volt))
+        dI, dV = np.diff(corr[:n]), np.diff(volt[:n])
+        sel = np.isfinite(dI) & np.isfinite(dV) & (np.abs(dI) >= limiar_dI)
+        if sel.sum() >= 10:
+            k["r_int"] = float(abs(np.median(dV[sel] / dI[sel])) * 1000)   # mΩ
 
-    with col6:
-        st.metric(
-            label="SOC máximo medido",
-            value=(
-                f"{formatar_br(soc_max)} %"
-                if soc_max is not None else "N/D"
-            )
-        )
+    fluxo = get_serie(dados, f"{prefixo}FluxoVolume_com")
+    litros = get_escalar(dados, f"{prefixo}litros_totais")
+    k["fluxo_pct"], k["fluxo_litros"] = {}, {}
+    if fluxo is not None:
+        modos = vetor_modos(dados, prefixo, len(fluxo))
+        f0 = np.nan_to_num(fluxo)
+        total = f0.sum()
+        if total > 0:
+            for i, m in enumerate(MODOS, start=1):
+                frac = f0[modos == i].sum() / total
+                k["fluxo_pct"][m["curto"]] = float(frac * 100)
+                k["fluxo_litros"][m["curto"]] = float(frac * litros) if litros is not None else None
+    return k
+
+
+# =======================================================================
+# 7. EVENTOS
+# =======================================================================
+def tabela_eventos(dados, prefixo) -> pd.DataFrame:
+    """Uma linha por ocorrência contínua de cada modo (classificação exclusiva)."""
+    vel = get_serie(dados, f"{prefixo}Speed_com")
+    corr = get_serie(dados, f"{prefixo}CorrenteFiltro")
+    thr = get_serie(dados, f"{prefixo}Throttle_com")
+    soc = soc_percentual(get_serie(dados, f"{prefixo}SOC_calc"))
+    volt = get_serie(dados, f"{prefixo}TensaoChumbo_com")
+    ref = vel if vel is not None else corr
+    if ref is None:
+        return pd.DataFrame()
+    modos = vetor_modos(dados, prefixo, len(ref))
+
+    def agg(arr, i, f, fn):
+        if arr is None or len(arr) < f or f <= i:
+            return np.nan
+        seg = arr[i:f]
+        seg = seg[np.isfinite(seg)]
+        return float(fn(seg)) if seg.size else np.nan
+
+    linhas = []
+    for k, m in enumerate(MODOS, start=1):
+        ini, fim = segmentos(modos == k)
+        for i, f in zip(ini, fim):
+            ah = (np.nansum(corr[i:f]) * DT_AMOSTRAGEM / 3600) if corr is not None else np.nan
+            v_ini = vel[i] if vel is not None else np.nan
+            v_fim = vel[min(f, len(vel)) - 1] if vel is not None else np.nan
+            dist = (np.nansum(vel[i:f]) / 3.6 * DT_AMOSTRAGEM / 1000) if vel is not None else np.nan
+            d_soc = (soc[min(f, len(soc)) - 1] - soc[i]) if soc is not None and len(soc) > i else np.nan
+            linhas.append({
+                "Modo": m["curto"],
+                "Início (s)": round(i * DT_AMOSTRAGEM, 2),
+                "Duração (s)": round((f - i) * DT_AMOSTRAGEM, 2),
+                "Ah": float(ah),
+                "Corrente média (A)": agg(corr, i, f, np.mean),
+                "Pico |I| (A)": agg(corr, i, f, lambda s: np.max(np.abs(s))),
+                "Vel. inicial (km/h)": float(v_ini),
+                "Vel. final (km/h)": float(v_fim),
+                "Vel. média (km/h)": agg(vel, i, f, np.mean),
+                "Throttle médio (%)": agg(thr, i, f, np.mean),
+                "Tensão média (V)": agg(volt, i, f, np.mean),
+                "Distância (km)": float(dist),
+                "ΔSOC (%)": float(d_soc),
+            })
+    df = pd.DataFrame(linhas)
+    return df.sort_values("Início (s)").reset_index(drop=True) if not df.empty else df
+
+
+def matriz_transicoes(modos: np.ndarray) -> np.ndarray:
+    seq = modos[modos > 0]
+    if seq.size < 2:
+        return np.zeros((len(MODOS), len(MODOS)), dtype=int)
+    seq = seq[np.concatenate([[True], seq[1:] != seq[:-1]])]
+    mat = np.zeros((len(MODOS), len(MODOS)), dtype=int)
+    for a, b in zip(seq[:-1], seq[1:]):
+        mat[a - 1, b - 1] += 1
+    return mat
+
+
+def eficiencia_regeneracao(df: pd.DataFrame, massa: float, tensao_padrao: float = 13.0):
+    """Energia elétrica recuperada / energia cinética perdida em cada frenagem."""
+    fre = df[df["Modo"] == "Frenagem"].copy()
+    if fre.empty:
+        return fre
+    vi, vf = fre["Vel. inicial (km/h)"] / 3.6, fre["Vel. final (km/h)"] / 3.6
+    fre["E cinética (Wh)"] = (0.5 * massa * (vi ** 2 - vf ** 2)).clip(lower=0) / 3600
+    tensao = fre["Tensão média (V)"].fillna(tensao_padrao)
+    fre["E elétrica (Wh)"] = fre["Ah"].abs() * tensao
+    fre["Eficiência (%)"] = np.where(fre["E cinética (Wh)"] > 0.05,
+                                     fre["E elétrica (Wh)"] / fre["E cinética (Wh)"] * 100, np.nan)
+    return fre
+
+
+def pagina_eventos(arquivo_1, arquivo_2):
+    st.title("Eventos & KPIs avançados")
+    ciclos = ciclos_carregados(arquivo_1, arquivo_2)
+    if not ciclos:
+        st.info("Envie pelo menos um arquivo .mat na barra lateral.")
+        return
+    nome = st.selectbox("Ciclo:", [c["nome"] for c in ciclos], key="ev_ciclo")
+    c = next(x for x in ciclos if x["nome"] == nome)
+    dados, pref = c["dados"], c["prefixo"]
+
+    # ---------------- KPIs avançados ----------------
+    st.subheader("KPIs avançados")
+    limiar_dI = st.number_input("Limiar de |ΔI| para estimar a resistência interna (A)",
+                                1.0, 100.0, 5.0, 1.0, key="ev_dI")
+    k = calcular_kpis_avancados(dados, pref, limiar_dI)
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Throughput de Ah", f"{fmt_br(k['throughput'])} Ah")
+    m2.metric("Balanço líquido (soma dos modos)", f"{fmt_br(k['saldo_modos'])} Ah")
+    m3.metric("ΔSOC × capacidade", f"{fmt_br(k['d_soc_ah'])} Ah")
+    dif = (k["saldo_modos"] - k["d_soc_ah"]) if (k["saldo_modos"] is not None and k["d_soc_ah"] is not None) else None
+    m4.metric("Diferença (consistência)", f"{fmt_br(dif)} Ah")
+    m5, m6, m7, m8 = st.columns(4)
+    m5.metric("C-rate máx. (carga)", fmt_br(k["crate_carga"]))
+    m6.metric("C-rate máx. (descarga)", fmt_br(k["crate_desc"]))
+    m7.metric("Temp. máx. / aquecimento",
+              f"{fmt_br(k['t_max'], 1)} °C" if k["t_max"] is not None else "N/D",
+              f"{fmt_br(k['taxa_aq'])} °C/min" if k["taxa_aq"] is not None else None)
+    m8.metric("Resistência interna (est.)", f"{fmt_br(k['r_int'])} mΩ" if k["r_int"] is not None else "N/D")
+    st.caption("A resistência é uma estimativa grosseira (mediana de ΔV/ΔI nos degraus de corrente), "
+               "sujeita a ruído e dinâmica de tensão. A diferença entre o balanço dos modos e ΔSOC×capacidade "
+               "serve como verificação de consistência dos dados.")
+
+    g1, g2 = st.columns(2)
+    with g1:
+        nomes = [m["curto"] for m in MODOS]
+        barras_ah = [None if k["ah_km"][n] is None else round(k["ah_km"][n], 3) for n in nomes]
+        if any(v is not None for v in barras_ah):
+            grafico({
+                "title": {"text": "Ah por km, por modo", "left": "center"},
+                "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}},
+                "grid": {"left": "10%", "right": "5%", "bottom": "12%", "top": "18%", "containLabel": True},
+                "xAxis": {"type": "category", "data": nomes},
+                "yAxis": {"type": "value", "name": "Ah/km", "splitLine": {"show": False}},
+                "series": [{"type": "bar", "barMaxWidth": 40, "data": [
+                    {"value": v, "itemStyle": {"color": m["cor"]}} for v, m in zip(barras_ah, MODOS)],
+                    "label": {"show": True, "position": "top", "formatter": FMT_DEC}}],
+            }, "380px", f"ev_ahkm_{pref}")
+        else:
+            st.info("Ah/km indisponível (faltam capacidades por modo ou distância).")
+    with g2:
+        if k["fluxo_pct"]:
+            nomes_f = list(k["fluxo_pct"].keys())
+            grafico({
+                "title": {"text": "Combustível por modo (% do fluxo)", "left": "center"},
+                "tooltip": {"trigger": "item", "formatter": "{b}: {c}%"},
+                "grid": {"left": "10%", "right": "5%", "bottom": "12%", "top": "18%", "containLabel": True},
+                "xAxis": {"type": "category", "data": nomes_f},
+                "yAxis": {"type": "value", "name": "%", "splitLine": {"show": False}},
+                "series": [{"type": "bar", "barMaxWidth": 40, "data": [
+                    {"value": round(k["fluxo_pct"][n], 2),
+                     "itemStyle": {"color": next(m["cor"] for m in MODOS if m["curto"] == n)}} for n in nomes_f],
+                    "label": {"show": True, "position": "top", "formatter": FMT_DEC}}],
+            }, "380px", f"ev_fluxo_{pref}")
+            if any(v is not None for v in k["fluxo_litros"].values()):
+                st.caption("Litros estimados por modo: " + " | ".join(
+                    f"{n}: {fmt_br(v)} L" for n, v in k["fluxo_litros"].items() if v is not None))
+        else:
+            st.info("FluxoVolume_com não encontrado para estimar o combustível por modo.")
+
+    # ---------------- Eventos ----------------
+    st.divider()
+    st.subheader("Eventos por modo operacional")
+    df = tabela_eventos(dados, pref)
+    if df.empty:
+        st.warning("Não foi possível segmentar eventos (faltam condições ou velocidade).")
+        return
+
+    resumo = (df.groupby("Modo").agg(Eventos=("Modo", "size"),
+                                      **{"Duração média (s)": ("Duração (s)", "mean"),
+                                         "Duração mediana (s)": ("Duração (s)", "median"),
+                                         "Duração máx. (s)": ("Duração (s)", "max"),
+                                         "Ah total": ("Ah", "sum")})
+              .reindex([m["curto"] for m in MODOS]).dropna(how="all").round(2).reset_index())
+    st.dataframe(resumo, use_container_width=True, hide_index=True)
+
+    filtro_modos = st.multiselect("Filtrar eventos por modo:", [m["curto"] for m in MODOS],
+                                  default=[m["curto"] for m in MODOS], key=f"ev_modos_{pref}")
+    df_f = df[df["Modo"].isin(filtro_modos)]
+    st.dataframe(df_f.round(2), use_container_width=True, hide_index=True)
+    cd1, cd2, _ = st.columns([1, 1, 3])
+    cd1.download_button("⬇️ Eventos (CSV)", csv_bytes(df_f.round(4)), f"eventos_{pref}.csv", "text/csv")
+    xl = excel_bytes({"Eventos": df.round(4), "Resumo": resumo})
+    if xl:
+        cd2.download_button("⬇️ Relatório (Excel)", xl, f"relatorio_{pref}.xlsx",
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+    # Histograma de duração por modo
+    st.markdown("#### Distribuição da duração dos eventos")
+    dmax = max(float(df["Duração (s)"].max()), 2 * DT_AMOSTRAGEM)
+    bordas = np.linspace(0, dmax, 13)
+    centros = [fmt_br((bordas[i] + bordas[i + 1]) / 2, 1) for i in range(12)]
+    series = []
+    for m in MODOS:
+        d = df.loc[df["Modo"] == m["curto"], "Duração (s)"].to_numpy()
+        if d.size:
+            h, _ = np.histogram(d, bins=bordas)
+            series.append({"name": m["curto"], "type": "bar", "data": h.tolist(),
+                           "itemStyle": {"color": m["cor"]}, "barMaxWidth": 22})
+    grafico({
+        "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}},
+        "legend": {"top": "2%", "data": [s["name"] for s in series]},
+        "grid": {"left": "7%", "right": "4%", "bottom": "18%", "top": "14%", "containLabel": True},
+        "xAxis": {"type": "category", "data": centros, "name": "Duração (s)", "nameLocation": "middle",
+                  "nameGap": 32},
+        "yAxis": {"type": "value", "name": "Nº de eventos", "splitLine": {"show": False}},
+        "series": series,
+    }, "380px", f"ev_hist_{pref}")
+
+    # Top eventos por Ah
+    st.markdown("#### Eventos mais energéticos (|Ah|)")
+    top = df.assign(**{"|Ah|": df["Ah"].abs()}).nlargest(10, "|Ah|")
+    st.dataframe(top[["Modo", "Início (s)", "Duração (s)", "Ah", "Pico |I| (A)", "Vel. média (km/h)"]].round(2),
+                 use_container_width=True, hide_index=True)
+
+    # Transições
+    st.markdown("#### Transições entre modos")
+    mat = matriz_transicoes(vetor_modos(dados, pref, int(df["Início (s)"].max() / DT_AMOSTRAGEM + 2)
+                                        if False else len(get_serie(dados, f"{pref}Speed_com")
+                                                           if get_serie(dados, f"{pref}Speed_com") is not None
+                                                           else get_serie(dados, f"{pref}CorrenteFiltro"))))
+    nomes_m = [m["curto"] for m in MODOS]
+    dados_hm = [[j, i, int(mat[i, j])] for i in range(len(MODOS)) for j in range(len(MODOS))]
+    grafico({
+        "tooltip": {"formatter": js("""function(p){ return 'De <b>' + __N__[p.value[1]] + '</b> para <b>' +
+            __N__[p.value[0]] + '</b>: ' + p.value[2] + ' vezes'; }""".replace("__N__", json.dumps(nomes_m)))},
+        "grid": {"left": "14%", "right": "6%", "bottom": "22%", "top": "6%", "containLabel": True},
+        "xAxis": {"type": "category", "data": nomes_m, "name": "Para", "nameLocation": "middle", "nameGap": 30},
+        "yAxis": {"type": "category", "data": nomes_m, "name": "De", "nameLocation": "middle", "nameGap": 60},
+        "visualMap": {"min": 0, "max": max(int(mat.max()), 1), "calculable": True, "orient": "horizontal",
+                      "left": "center", "bottom": "0%", "inRange": {"color": ["#f7f1fb", "#702082"]}},
+        "series": [{"type": "heatmap", "data": dados_hm, "label": {"show": True}}],
+    }, "380px", f"ev_trans_{pref}")
+
+    # Regeneração
+    st.markdown("#### Eficiência de regeneração")
+    massa = st.number_input("Massa do veículo (kg)", 500.0, 5000.0, 1500.0, 50.0, key=f"ev_massa_{pref}")
+    fre = eficiencia_regeneracao(df, massa)
+    if fre.empty:
+        st.info("Nenhum evento de frenagem regenerativa encontrado.")
+    else:
+        e_ele, e_cin = fre["E elétrica (Wh)"].sum(), fre["E cinética (Wh)"].sum()
+        r1, r2, r3 = st.columns(3)
+        r1.metric("Energia elétrica recuperada", f"{fmt_br(e_ele)} Wh")
+        r2.metric("Energia cinética dissipada", f"{fmt_br(e_cin)} Wh")
+        r3.metric("Eficiência global", f"{fmt_br(e_ele / e_cin * 100)} %" if e_cin > 0 else "N/D")
+        st.caption("Estimativa: energia cinética = ½·m·(v₁² − v₂²) por evento; energia elétrica = |Ah| × tensão média. "
+                   "Perdas aerodinâmicas e de rolamento não são descontadas, então é um limite inferior da eficiência.")
+        st.dataframe(fre[["Início (s)", "Duração (s)", "Vel. inicial (km/h)", "Vel. final (km/h)", "Ah",
+                          "E cinética (Wh)", "E elétrica (Wh)", "Eficiência (%)"]].round(2),
+                     use_container_width=True, hide_index=True)
+
+    # Ineficiências
+    st.markdown("#### Possíveis ineficiências da estratégia")
+    i1, i2, i3 = st.columns(3)
+    lim_v = i1.number_input("Boost abaixo de (km/h)", 0.0, 100.0, 20.0, 1.0, key=f"ev_limv_{pref}")
+    lim_t = i2.number_input("Alternador com pedal acima de (%)", 0.0, 100.0, 60.0, 5.0, key=f"ev_limt_{pref}")
+    lim_d = i3.number_input("Pulsos curtos abaixo de (s)", 0.1, 10.0, 1.0, 0.1, key=f"ev_limd_{pref}")
+    flag_boost = df[(df["Modo"] == "Boost") & (df["Vel. média (km/h)"] < lim_v)]
+    flag_alt = df[(df["Modo"] == "Alternador") & (df["Throttle médio (%)"] > lim_t)]
+    flag_curto = df[(df["Duração (s)"] < lim_d) & (df["Modo"].isin(["Boost", "Alternador"]))]
+    f1, f2, f3 = st.columns(3)
+    f1.metric("Boost em baixa velocidade", len(flag_boost))
+    f2.metric("Alternador com pedal alto", len(flag_alt))
+    f3.metric("Pulsos curtos (Boost/Alt.)", len(flag_curto))
+    with st.expander("Ver eventos sinalizados"):
+        for titulo, d in (("Boost em baixa velocidade", flag_boost), ("Alternador com pedal alto", flag_alt),
+                          ("Pulsos curtos", flag_curto)):
+            st.markdown(f"**{titulo}**")
+            st.dataframe(d.round(2), use_container_width=True, hide_index=True)
+
+    # C-rate
+    corr = get_serie(dados, f"{pref}CorrenteFiltro")
+    cap = get_escalar(dados, f"{pref}Capacidade_Ah")
+    if corr is not None and cap:
+        st.markdown("#### Distribuição do C-rate")
+        cr = corr[np.isfinite(corr)] / cap
+        h, b = np.histogram(cr, bins=30)
+        grafico({
+            "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}},
+            "grid": {"left": "7%", "right": "4%", "bottom": "18%", "top": "8%", "containLabel": True},
+            "xAxis": {"type": "category", "data": [fmt_br((b[i] + b[i + 1]) / 2, 2) for i in range(30)],
+                      "name": "C-rate", "nameLocation": "middle", "nameGap": 32,
+                      "axisLabel": {"rotate": 40, "interval": 2, "fontSize": 9}},
+            "yAxis": {"type": "value", "name": "Amostras", "splitLine": {"show": False}},
+            "series": [{"type": "bar", "data": h.tolist(), "itemStyle": {"color": COR_BOOST}, "barMaxWidth": 20}],
+        }, "340px", f"ev_crate_{pref}")
+
+
+# =======================================================================
+# 8. TELEMETRIA
+# =======================================================================
+def painel_telemetria(arquivo, prefixo, nome_ciclo, chave):
+    dados = carregar_arquivo_mat(arquivo)
+    if not dados:
+        return
+    kpis_ciclo(dados, prefixo, nome_ciclo)
+    st.divider()
+    sufixos = listar_series(dados, prefixo)
+    t_livre, t_modos, t_ah = st.tabs(["Dois eixos livres", "Velocidade × modos", "Ah acumulado por modo"])
+
+    with t_livre:
+        if len(sufixos) < 2:
+            st.warning("O arquivo precisa conter ao menos 2 séries temporais.")
+        else:
+            c1, c2 = st.columns(2)
+            esq = c1.selectbox("Variável esquerda (área):", sufixos, format_func=rotulo_var, key=f"{chave}_esq")
+            dire = c2.selectbox("Variável direita (linha):", sufixos, index=1, format_func=rotulo_var,
+                                key=f"{chave}_dir")
+            plotar_grafico_duplo_eixo(dados, prefixo, esq, dire,
+                                      f"{arquivo.name} — {rotulo_var(esq, False)} vs {rotulo_var(dire, False)}",
+                                      f"{chave}_duplo")
+
+    with t_modos:
+        opcoes_dir = [s for s in sufixos if s != "Speed_com"]
+        if not opcoes_dir:
+            st.warning("Sem variáveis adicionais para o eixo direito.")
+        else:
+            c1, c2, c3 = st.columns([2, 2, 2])
+            idx = opcoes_dir.index("SOC_calc") if "SOC_calc" in opcoes_dir else 0
+            sufixo = c1.selectbox("Variável do eixo direito:", opcoes_dir, index=idx,
+                                  format_func=rotulo_var, key=f"{chave}_mdir")
+            estilo = c2.selectbox("Visualização dos modos:", ESTILOS, key=f"{chave}_estilo")
+            eixo = c3.radio("Eixo X:", ["Tempo (s)", "Distância (km)"], horizontal=True, key=f"{chave}_eixo")
+            sel = st.multiselect("Modos exibidos:", [m["nome"] for m in MODOS],
+                                 default=[m["nome"] for m in MODOS], key=f"{chave}_msel")
+            modos_idx = [i for i, m in enumerate(MODOS, start=1) if m["nome"] in sel]
+            vel = get_serie(dados, f"{prefixo}Speed_com")
+            tmax = (len(vel) if vel is not None else 0) * DT_AMOSTRAGEM
+            janela = None
+            if tmax > 10:
+                janela = st.slider("Janela de tempo (s)", 0.0, float(tmax), (0.0, float(tmax)),
+                                   step=1.0, key=f"{chave}_janela")
+            fases = None
+            if prefixo == "f":
+                if st.checkbox("Mostrar fases do FTP", key=f"{chave}_fases"):
+                    p1, p2 = st.columns(2)
+                    t1 = p1.number_input("Fim do transiente a frio (s)", 0.0, 5000.0, 505.0, 1.0, key=f"{chave}_f1")
+                    t2 = p2.number_input("Fim da fase estabilizada (s)", 0.0, 5000.0, 1372.0, 1.0, key=f"{chave}_f2")
+                    fases = [("Fim transiente a frio", t1), ("Fim fase estabilizada", t2)]
+            grafico_temporal(dados, prefixo, sufixo, arquivo.name, f"{chave}_temporal", estilo,
+                             modos_idx, janela, eixo, fases)
+
+    with t_ah:
+        grafico_ah_acumulado(dados, prefixo, arquivo.name, f"{chave}_ah")
+
+
+# =======================================================================
+# 9. ESTATÍSTICA
+# =======================================================================
+def contagem_condicoes(dados, prefixo):
+    """Itens de pizza: nº de amostras ativas em cada condição."""
+    itens = []
+    for m in MODOS:
+        c = get_serie(dados, f"{prefixo}condicao_{m['cod']}")
+        if c is not None:
+            itens.append({"value": int(np.sum(c > 0)), "name": m["curto"], "itemStyle": {"color": m["cor"]}})
+    if not itens:   # fallback: detecção automática
+        for chave, vetor in dados.items():
+            kl = chave.lower()
+            if "cond" in kl or any(t in kl for t in ("boo", "neu", "alt")):
+                itens.append({"value": int(np.sum(np.asarray(vetor) > 0)), "name": chave})
+    return [i for i in itens if i["value"] > 0]
+
+
+def plotar_pizza_condicoes(itens, titulo, chave):
+    grafico({
+        "title": {"text": titulo, "subtext": "Tempo em cada condição", "left": "center"},
+        "tooltip": {"trigger": "item", "formatter": "{b}<br/><b>{c} amostras</b> ({d}%)"},
+        "legend": {"orient": "vertical", "left": "left"},
+        "series": [{"name": "Condição", "type": "pie", "radius": "55%", "data": itens,
+                    "label": {"show": True, "formatter": "{b}\n{d}%", "fontSize": 12, "fontWeight": "bold"},
+                    "labelLine": {"show": True, "length": 15, "length2": 10},
+                    "emphasis": {"itemStyle": {"shadowBlur": 10, "shadowColor": "rgba(0,0,0,0.5)"}}}],
+    }, "450px", chave)
 
 
 def renderizar_analise_estatistica(arquivo_1, arquivo_2):
-    """
-    Módulo de análise estatística operacional.
-
-    Permite:
-    - Selecionar FTP ou Highway.
-    - Selecionar condição operacional.
-    - Selecionar variável de interesse.
-    - Calcular estatísticas descritivas e percentis.
-    - Plotar histograma e curva normal de referência.
-    - Plotar heatmaps de densidade operacional.
-    """
-
-    # =========================================================
-    # 1. FUNÇÕES AUXILIARES
-    # =========================================================
-
-    def obter_serie(dados, nome):
-        bruto = dados.get(nome)
-
-        if bruto is None:
-            return None
-
-        try:
-            valores = np.asarray(bruto, dtype=float).ravel()
-
-            if valores.size == 0:
-                return None
-
-            return valores
-
-        except (TypeError, ValueError):
-            return None
-
-    def formatar_numero(valor, casas=2):
-        if valor is None or not np.isfinite(valor):
-            return "N/D"
-
-        return (
-            f"{valor:,.{casas}f}"
-            .replace(",", "X")
-            .replace(".", ",")
-            .replace("X", ".")
-        )
-
-    def nome_amigavel(nome, prefixo):
-        sufixo = nome[len(prefixo):]
-
-        nomes = {
-            "Speed_com": "Velocidade (km/h)",
-            "Aceleracao_com": "Aceleração (m/s²)",
-            "CorrenteBSG_com": "Corrente BSG (A)",
-            "CorrenteFiltro": "Corrente da bateria (A)",
-            "CorrenteConsumoExterno_com": "Corrente cargas externas (A)",
-            "FluxoVolume_com": "Fluxo volumétrico",
-            "FluxoMassa": "Fluxo de massa",
-            "LoadCarga_com": "Carga do motor (%)",
-            "RPM_com": "Rotação do motor (RPM)",
-            "SOC_calc": "SOC (%)",
-            "TempBattery_com": "Temperatura da bateria (°C)",
-            "TempCatalisador_com": "Temperatura do catalisador (°C)",
-            "TensaoAC1_norm": "Tensão AC1",
-            "TensaoBSG_com": "Tensão BSG (V)",
-            "TensaoChumbo_com": "Tensão da bateria (V)",
-            "TensaoFreio_com": "Tensão do freio",
-            "Throttle_com": "Pedal do acelerador (%)",
-            "PowerBattery_com": "Potência da bateria (W)",
-            "PowerBSG_com": "Potência BSG (W)"
-        }
-
-        return nomes.get(
-            sufixo,
-            sufixo.replace("_", " ").title()
-        )
-
-    def listar_variaveis(dados, prefixo):
-        variaveis = []
-
-        for nome, valor in dados.items():
-
-            if not nome.startswith(prefixo):
-                continue
-
-            # Condições operacionais não são variáveis de interesse
-            if nome.startswith(f"{prefixo}condicao"):
-                continue
-
-            try:
-                serie = np.asarray(valor, dtype=float).ravel()
-
-                if serie.size > 1 and np.isfinite(serie).any():
-                    variaveis.append(nome)
-
-            except (TypeError, ValueError):
-                continue
-
-        return sorted(
-            variaveis,
-            key=lambda x: nome_amigavel(x, prefixo).lower()
-        )
-
-    def extrair_serie_condicionada(
-        dados,
-        nome_variavel,
-        nome_condicao=None
-    ):
-        serie = obter_serie(dados, nome_variavel)
-
-        if serie is None:
-            return np.array([])
-
-        # Todas as amostras
-        if nome_condicao is None:
-            return serie[np.isfinite(serie)]
-
-        condicao = obter_serie(dados, nome_condicao)
-
-        if condicao is None:
-            return np.array([])
-
-        n = min(len(serie), len(condicao))
-
-        serie = serie[:n]
-        condicao = condicao[:n]
-
-        mascara = (
-            np.isfinite(serie)
-            & np.isfinite(condicao)
-            & (condicao != 0)
-        )
-
-        return serie[mascara]
-
-    def extrair_par_condicionado(
-        dados,
-        nome_x,
-        nome_y,
-        nome_condicao=None
-    ):
-        serie_x = obter_serie(dados, nome_x)
-        serie_y = obter_serie(dados, nome_y)
-
-        if serie_x is None or serie_y is None:
-            return np.array([]), np.array([])
-
-        if nome_condicao is None:
-            n = min(len(serie_x), len(serie_y))
-
-            x = serie_x[:n]
-            y = serie_y[:n]
-
-            mascara = np.isfinite(x) & np.isfinite(y)
-
-        else:
-            condicao = obter_serie(dados, nome_condicao)
-
-            if condicao is None:
-                return np.array([]), np.array([])
-
-            n = min(
-                len(serie_x),
-                len(serie_y),
-                len(condicao)
-            )
-
-            x = serie_x[:n]
-            y = serie_y[:n]
-            condicao = condicao[:n]
-
-            mascara = (
-                np.isfinite(x)
-                & np.isfinite(y)
-                & np.isfinite(condicao)
-                & (condicao != 0)
-            )
-
-        return x[mascara], y[mascara]
-
-    # =========================================================
-    # 2. CARREGAMENTO DOS ARQUIVOS
-    # =========================================================
-
-    ciclos = []
-
-    if arquivo_1:
-        dados_ftp = carregar_arquivo_mat(arquivo_1)
-
-        if dados_ftp:
-            ciclos.append({
-                "nome": f"FTP — {arquivo_1.name}",
-                "dados": dados_ftp,
-                "prefixo": "f"
-            })
-
-    if arquivo_2:
-        dados_hgw = carregar_arquivo_mat(arquivo_2)
-
-        if dados_hgw:
-            ciclos.append({
-                "nome": f"Highway — {arquivo_2.name}",
-                "dados": dados_hgw,
-                "prefixo": "h"
-            })
-
+    ciclos = ciclos_carregados(arquivo_1, arquivo_2)
     if not ciclos:
-        st.info(
-            "Envie pelo menos um arquivo .mat na barra lateral "
-            "para iniciar a análise estatística."
-        )
+        st.info("Envie pelo menos um arquivo .mat na barra lateral para iniciar a análise estatística.")
         return
-
     st.title("Análise Estatística das Condições Operacionais")
 
-    # =========================================================
-    # 3. SELEÇÃO DO CICLO
-    # =========================================================
+    nome = st.selectbox("Ciclo de condução:", [c["nome"] for c in ciclos], key="estat_ciclo")
+    ciclo = next(c for c in ciclos if c["nome"] == nome)
+    dados, prefixo = ciclo["dados"], ciclo["prefixo"]
 
-    nomes_ciclos = [
-        ciclo["nome"] for ciclo in ciclos
-    ]
-
-    ciclo_selecionado = st.selectbox(
-        "Ciclo de condução:",
-        nomes_ciclos,
-        key="estat_ciclo"
-    )
-
-    ciclo = next(
-        c for c in ciclos
-        if c["nome"] == ciclo_selecionado
-    )
-
-    dados = ciclo["dados"]
-    prefixo = ciclo["prefixo"]
-
-    # =========================================================
-    # 4. SELEÇÃO DA CONDIÇÃO OPERACIONAL
-    # =========================================================
-
-    condicoes = {
-        "Todas as amostras": None,
-        "Alternador": f"{prefixo}condicao_alt",
-        "Boost": f"{prefixo}condicao_boo",
-        "Frenagem regenerativa": f"{prefixo}condicao_fre",
-        "Neutro": f"{prefixo}condicao_neu"
-    }
-
-    condicoes_disponiveis = {
-        nome: chave
-        for nome, chave in condicoes.items()
-        if chave is None or chave in dados
-    }
+    condicoes = {"Todas as amostras": None}
+    for m in MODOS:
+        if f"{prefixo}condicao_{m['cod']}" in dados:
+            condicoes[m["curto"]] = m["cod"]
 
     col1, col2 = st.columns(2)
-
-    with col1:
-        condicao_selecionada = st.selectbox(
-            "Condição operacional:",
-            list(condicoes_disponiveis.keys()),
-            key=f"estat_condicao_{prefixo}"
-        )
-
-    nome_condicao = condicoes_disponiveis[
-        condicao_selecionada
-    ]
-
-    with col2:
-
-        # =====================================================
-        # 5. SELEÇÃO DA VARIÁVEL
-        # =====================================================
-
-        variaveis_disponiveis = listar_variaveis(
-            dados,
-            prefixo
-        )
-
-        if not variaveis_disponiveis:
-            st.warning(
-                "Não foram encontradas séries temporais numéricas "
-                "para análise neste arquivo."
-            )
-            return
-
-        variavel_selecionada = st.selectbox(
-            "Variável analisada:",
-            variaveis_disponiveis,
-            format_func=lambda nome: nome_amigavel(nome, prefixo),
-            key=f"estat_variavel_{prefixo}"
-        )
-
-    nome_variavel = nome_amigavel(
-        variavel_selecionada,
-        prefixo
-    )
-
-    # =========================================================
-    # 6. FILTRAGEM DOS DADOS
-    # =========================================================
-
-    valores = extrair_serie_condicionada(
-        dados,
-        variavel_selecionada,
-        nome_condicao
-    )
+    cond_nome = col1.selectbox("Condição operacional:", list(condicoes.keys()), key=f"estat_cond_{prefixo}")
+    cod = condicoes[cond_nome]
+    sufixos = listar_series(dados, prefixo)
+    if not sufixos:
+        st.warning("Não foram encontradas séries temporais numéricas para análise neste arquivo.")
+        return
+    suf = col2.selectbox("Variável analisada:", sufixos, format_func=rotulo_var, key=f"estat_var_{prefixo}")
+    nome_var = rotulo_var(suf)
+    (valores,) = extrair(dados, prefixo, [f"{prefixo}{suf}"], cod)
 
     st.divider()
-
-    st.markdown(
-        f"**Ciclo:** {ciclo['nome']}  \n"
-        f"**Condição:** {condicao_selecionada}  \n"
-        f"**Variável:** {nome_variavel}"
-    )
-
+    st.markdown(f"**Ciclo:** {ciclo['nome']}  \n**Condição:** {cond_nome}  \n**Variável:** {nome_var}")
     if len(valores) < 2:
-        st.warning(
-            "Não existem amostras suficientes para realizar "
-            "a análise nesta condição."
-        )
+        st.warning("Não existem amostras suficientes para realizar a análise nesta condição.")
         return
 
-    # =========================================================
-    # 7. INDICADORES ESTATÍSTICOS
-    # =========================================================
-
-    media = float(np.mean(valores))
-    mediana = float(np.median(valores))
+    media, mediana = float(np.mean(valores)), float(np.median(valores))
     desvio = float(np.std(valores, ddof=1))
-
-    minimo = float(np.min(valores))
-    maximo = float(np.max(valores))
-
-    percentis = np.percentile(
-        valores,
-        [10, 25, 50, 75, 90]
-    )
-
-    coef_variacao = (
-        (desvio / abs(media)) * 100
-        if abs(media) > 1e-12
-        else None
-    )
+    minimo, maximo = float(valores.min()), float(valores.max())
+    perc = np.percentile(valores, [10, 25, 50, 75, 90])
+    cv = desvio / abs(media) * 100 if abs(media) > 1e-12 else None
 
     st.subheader("Indicadores estatísticos")
-
-    colunas = st.columns(4)
-
-    indicadores = [
-        ("Amostras válidas", f"{len(valores):,}".replace(",", ".")),
-        ("Média", formatar_numero(media)),
-        ("Mediana", formatar_numero(mediana)),
-        ("Desvio-padrão", formatar_numero(desvio)),
-        ("Mínimo", formatar_numero(minimo)),
-        ("Máximo", formatar_numero(maximo)),
-        ("Coef. de variação", (
-            f"{formatar_numero(coef_variacao)} %"
-            if coef_variacao is not None else "N/D"
-        )),
-        ("Amplitude", formatar_numero(maximo - minimo))
-    ]
-
-    for i, (rotulo, valor) in enumerate(indicadores):
-        with colunas[i % 4]:
-            st.metric(rotulo, valor)
-
-    tabela_percentis = pd.DataFrame({
-        "Percentil": ["P10", "P25", "P50", "P75", "P90"],
-        "Valor": [
-            formatar_numero(v)
-            for v in percentis
-        ]
-    })
-
+    cols = st.columns(4)
+    indic = [("Amostras válidas", fmt_br(len(valores), 0)), ("Média", fmt_br(media)),
+             ("Mediana", fmt_br(mediana)), ("Desvio-padrão", fmt_br(desvio)),
+             ("Mínimo", fmt_br(minimo)), ("Máximo", fmt_br(maximo)),
+             ("Coef. de variação", f"{fmt_br(cv)} %" if cv is not None else "N/D"),
+             ("Amplitude", fmt_br(maximo - minimo))]
+    for i, (r, v) in enumerate(indic):
+        cols[i % 4].metric(r, v)
     st.markdown("**Distribuição por percentis**")
+    st.dataframe(pd.DataFrame({"Percentil": ["P10", "P25", "P50", "P75", "P90"],
+                               "Valor": [fmt_br(v) for v in perc]}),
+                 use_container_width=True, hide_index=True)
 
-    st.dataframe(
-        tabela_percentis,
-        use_container_width=True,
-        hide_index=True
-    )
-
-    # =========================================================
-    # 8. HISTOGRAMA E CURVA NORMAL
-    # =========================================================
-
+    # Histograma + normal
     st.divider()
     st.subheader("Distribuição de probabilidade")
-
-    quantidade_bins = min(
-        30,
-        max(5, int(np.sqrt(len(valores))))
-    )
-
-    frequencias, limites = np.histogram(
-        valores,
-        bins=quantidade_bins
-    )
-
-    centros = (
-        limites[:-1] + limites[1:]
-    ) / 2
-
-    largura_bin = float(
-        np.mean(np.diff(limites))
-    )
-
-    # Distribuição normal de referência
+    nb = min(30, max(5, int(np.sqrt(len(valores)))))
+    freq, limites = np.histogram(valores, bins=nb)
+    centros = (limites[:-1] + limites[1:]) / 2
+    largura = float(np.mean(np.diff(limites)))
     if desvio > 0:
-
-        pdf_normal = (
-            1 / (desvio * np.sqrt(2 * np.pi))
-        ) * np.exp(
-            -0.5 * ((centros - media) / desvio) ** 2
-        )
-
-        frequencia_normal = (
-            pdf_normal * len(valores) * largura_bin
-        )
-
+        pdf = (1 / (desvio * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((centros - media) / desvio) ** 2)
+        freq_normal = pdf * len(valores) * largura
     else:
-        frequencia_normal = np.zeros_like(centros)
-
-    opcoes_distribuicao = {
-        "tooltip": {
-            "trigger": "axis",
-            "axisPointer": {
-                "type": "shadow"
-            }
-        },
-
-        "legend": {
-            "top": "2%",
-            "data": [
-                "Frequência observada",
-                "Normal de referência"
-            ]
-        },
-
-        "grid": {
-            "left": "8%",
-            "right": "5%",
-            "bottom": "15%",
-            "top": "18%",
-            "containLabel": True
-        },
-
-        "xAxis": {
-            "type": "category",
-            "name": nome_variavel,
-            "nameLocation": "middle",
-            "nameGap": 35,
-            "data": [
-                formatar_numero(v)
-                for v in centros
-            ],
-            "axisLabel": {
-                "rotate": 35,
-                "interval": "auto"
-            },
-            "splitLine": {
-                "show": False
-            }
-        },
-
-        "yAxis": {
-            "type": "value",
-            "name": "Frequência",
-            "splitLine": {
-                "show": False
-            }
-        },
-
+        freq_normal = np.zeros_like(centros)
+    grafico({
+        "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}},
+        "legend": {"top": "2%", "data": ["Frequência observada", "Normal de referência"]},
+        "grid": {"left": "8%", "right": "5%", "bottom": "15%", "top": "18%", "containLabel": True},
+        "xAxis": {"type": "category", "name": nome_var, "nameLocation": "middle", "nameGap": 35,
+                  "data": [fmt_br(v) for v in centros], "axisLabel": {"rotate": 35, "interval": "auto"}},
+        "yAxis": {"type": "value", "name": "Frequência", "splitLine": {"show": False}},
         "series": [
-            {
-                "name": "Frequência observada",
-                "type": "bar",
-                "data": frequencias.tolist(),
-                "barMaxWidth": 35,
-                "itemStyle": {
-                    "color": "#702082",
-                    "opacity": 0.7
-                }
-            },
-            {
-                "name": "Normal de referência",
-                "type": "line",
-                "data": frequencia_normal.tolist(),
-                "smooth": True,
-                "symbol": "none",
-                "lineStyle": {
-                    "width": 3,
-                    "color": "#008848"
-                }
-            }
-        ]
-    }
+            {"name": "Frequência observada", "type": "bar", "data": freq.tolist(), "barMaxWidth": 35,
+             "itemStyle": {"color": COR_BOOST, "opacity": 0.7}},
+            {"name": "Normal de referência", "type": "line", "data": freq_normal.tolist(), "smooth": True,
+             "symbol": "none", "lineStyle": {"width": 3, "color": COR_REGEN}},
+        ],
+    }, "430px", f"estat_dist_{prefixo}")
+    st.caption("A curva normal é uma referência calculada com a média e o desvio-padrão da amostra. "
+               "Ela não implica que os dados sigam necessariamente uma distribuição normal.")
 
-    st_echarts(
-        options=opcoes_distribuicao,
-        height="430px",
-        key=f"estat_distribuicao_{prefixo}"
-    )
+    # Boxplot por modo
+    st.divider()
+    st.subheader("Comparação entre modos operacionais")
+    caixas, nomes_box, cores_box = [], [], []
+    for m in MODOS:
+        (v,) = extrair(dados, prefixo, [f"{prefixo}{suf}"], m["cod"])
+        if len(v) >= 5:
+            p = np.percentile(v, [10, 25, 50, 75, 90])
+            caixas.append([round(float(x), 3) for x in p])
+            nomes_box.append(m["curto"])
+            cores_box.append(m["cor"])
+    if caixas:
+        grafico({
+            "title": {"text": f"{nome_var} por modo", "subtext": "Caixa: P25–P75 | traço: mediana | hastes: P10–P90",
+                      "left": "center", "subtextStyle": {"fontSize": 11, "color": "#777"}},
+            "tooltip": {"trigger": "item"},
+            "grid": {"left": "8%", "right": "5%", "bottom": "10%", "top": "22%", "containLabel": True},
+            "xAxis": {"type": "category", "data": nomes_box},
+            "yAxis": {"type": "value", "name": nome_var, "scale": True, "splitLine": {"show": False}},
+            "series": [{"type": "boxplot", "data": [{"value": c, "itemStyle": {"borderColor": cor, "color": cor + "55"}}
+                                                    for c, cor in zip(caixas, cores_box)]}],
+        }, "400px", f"estat_box_{prefixo}")
+    else:
+        st.info("Amostras insuficientes por modo para o boxplot.")
 
-    st.caption(
-        "A curva normal é uma referência calculada com a média "
-        "e o desvio-padrão da amostra. Ela não implica que os "
-        "dados sigam necessariamente uma distribuição normal."
-    )
-
-    # =========================================================
-    # 9. HEATMAPS DE DENSIDADE OPERACIONAL
-    # =========================================================
-
+    # Heatmaps de densidade
     st.divider()
     st.subheader("Mapas de densidade operacional")
-
-    st.caption(
-        "A intensidade da cor representa o percentual de amostras "
-        "da condição selecionada em cada região do mapa."
-    )
-
-    preditores = [
-        ("Velocidade", f"{prefixo}Speed_com"),
-        ("SOC", f"{prefixo}SOC_calc"),
-        ("RPM", f"{prefixo}RPM_com"),
-        ("Carga do motor", f"{prefixo}LoadCarga_com"),
-        ("Pedal do acelerador", f"{prefixo}Throttle_com")
-    ]
-
-    # Remove variáveis indisponíveis e comparações da variável consigo mesma
-    preditores_validos = [
-        (nome, chave)
-        for nome, chave in preditores
-        if chave in dados and chave != variavel_selecionada
-    ]
-
-    if not preditores_validos:
-        st.info(
-            "Não existem variáveis disponíveis para gerar os heatmaps."
-        )
-        return
-
-    for indice in range(0, len(preditores_validos), 2):
-
-        colunas_heatmap = st.columns(2)
-
-        for posicao in range(2):
-
-            indice_atual = indice + posicao
-
-            if indice_atual >= len(preditores_validos):
+    st.caption("A intensidade da cor representa o percentual de amostras da condição selecionada em cada região do mapa.")
+    preditores = [("Velocidade", "Speed_com"), ("SOC", "SOC_calc"), ("RPM", "RPM_com"),
+                  ("Carga do motor", "LoadCarga_com"), ("Pedal do acelerador", "Throttle_com")]
+    validos = [(n, s) for n, s in preditores if f"{prefixo}{s}" in dados and s != suf]
+    for i in range(0, len(validos), 2):
+        cols = st.columns(2)
+        for j in range(2):
+            if i + j >= len(validos):
                 continue
-
-            nome_x, chave_x = preditores_validos[indice_atual]
-
-            x, y = extrair_par_condicionado(
-                dados,
-                chave_x,
-                variavel_selecionada,
-                nome_condicao
-            )
-
-            with colunas_heatmap[posicao]:
-
-                st.markdown(
-                    f"**{nome_x} × {nome_variavel}**"
-                )
-
-                if len(x) < 5:
-                    st.info(
-                        "Amostras insuficientes para este heatmap."
-                    )
-                    continue
-
-                if np.ptp(x) == 0 or np.ptp(y) == 0:
-                    st.info(
-                        "Não há variação suficiente nos dados "
-                        "para construir este heatmap."
-                    )
-                    continue
-
-                # Histograma bidimensional
-                matriz, limites_x, limites_y = np.histogram2d(
-                    x,
-                    y,
-                    bins=24
-                )
-
-                # Conversão para percentual de amostras
-                matriz_percentual = (
-                    matriz / len(x)
-                ) * 100
-
-                rotulos_x = [
-                    formatar_numero(
-                        (limites_x[i] + limites_x[i + 1]) / 2,
-                        1
-                    )
-                    for i in range(len(limites_x) - 1)
-                ]
-
-                rotulos_y = [
-                    formatar_numero(
-                        (limites_y[i] + limites_y[i + 1]) / 2,
-                        1
-                    )
-                    for i in range(len(limites_y) - 1)
-                ]
-
-                dados_heatmap = []
-
-                for i in range(matriz_percentual.shape[0]):
-                    for j in range(matriz_percentual.shape[1]):
-
-                        valor = matriz_percentual[i, j]
-
-                        if valor > 0:
-                            dados_heatmap.append([
-                                i,
-                                j,
-                                round(float(valor), 3)
-                            ])
-
-                maior_percentual = float(
-                    np.max(matriz_percentual)
-                )
-
-                opcoes_heatmap = {
-                    "tooltip": {
-                        "position": "top",
-                        "formatter": JsCode("""
-                            function(params) {
-                                return (
-                                    'Faixa X: ' + params.value[0] +
-                                    '<br>Faixa Y: ' + params.value[1] +
-                                    '<br>Concentração: ' +
-                                    params.value[2].toFixed(3) + '%'
-                                );
-                            }
-                        """)
-                    },
-
-                    "grid": {
-                        "left": "15%",
-                        "right": "10%",
-                        "bottom": "25%",
-                        "top": "8%",
-                        "containLabel": True
-                    },
-
-                    "xAxis": {
-                        "type": "category",
-                        "name": nome_x,
-                        "data": rotulos_x,
-                        "splitLine": {
-                            "show": False
-                        },
-                        "axisLabel": {
-                            "rotate": 45,
-                            "interval": 3,
-                            "fontSize": 9
-                        }
-                    },
-
-                    "yAxis": {
-                        "type": "category",
-                        "name": nome_variavel,
-                        "data": rotulos_y,
-                        "splitLine": {
-                            "show": False
-                        },
-                        "axisLabel": {
-                            "fontSize": 9
-                        }
-                    },
-
-                    "visualMap": {
-                        "min": 0,
-                        "max": maior_percentual,
-                        "calculable": True,
-                        "orient": "horizontal",
-                        "left": "center",
-                        "bottom": "0%",
-                        "dimension": 2,
-                        "text": [
-                            "Maior",
-                            "Menor"
-                        ]
-                    },
-
-                    "series": [
-                        {
-                            "name": "Concentração",
-                            "type": "heatmap",
-                            "data": dados_heatmap,
-                            "emphasis": {
-                                "itemStyle": {
-                                    "shadowBlur": 8
-                                }
-                            }
-                        }
-                    ]
-                }
-
-                st_echarts(
-                    options=opcoes_heatmap,
-                    height="390px",
-                    key=(
-                        f"heatmap_{prefixo}_"
-                        f"{chave_x}_{variavel_selecionada}"
-                    )
-                )
-
-    
-    # =========================================================
-    # 10. HEATMAPS ESPECÍFICOS DA BATERIA
-    # =========================================================
+            n_x, s_x = validos[i + j]
+            x, y = extrair(dados, prefixo, [f"{prefixo}{s_x}", f"{prefixo}{suf}"], cod)
+            with cols[j]:
+                st.markdown(f"**{n_x} × {nome_var}**")
+                heatmap_2d(x, y, n_x, nome_var, f"hm_{prefixo}_{s_x}_{suf}_{cod}", "390px")
 
     st.divider()
-
-    st.subheader(
-        "Análise térmica e elétrica da bateria"
-    )
-
-    st.caption(
-        "Relação entre a temperatura da bateria e seus "
-        "parâmetros elétricos, considerando a condição operacional "
-        "selecionada anteriormente."
-    )
-
-    # ---------------------------------------------------------
-    # DEFINIÇÃO DOS DOIS MAPAS
-    # ---------------------------------------------------------
-
-    heatmaps_bateria = [
-
-        {
-            "titulo": "Temperatura × Corrente da bateria",
-            "nome_x": "Temperatura da bateria (°C)",
-            "chave_x": f"{prefixo}TempBattery_com",
-            "nome_y": "Corrente da bateria (A)",
-            "chave_y": f"{prefixo}CorrenteFiltro",
-            "key": "temperatura_corrente"
-        },
-
-        {
-            "titulo": "Temperatura × Tensão da bateria",
-            "nome_x": "Temperatura da bateria (°C)",
-            "chave_x": f"{prefixo}TempBattery_com",
-            "nome_y": "Tensão da bateria (V)",
-            "chave_y": f"{prefixo}TensaoChumbo_com",
-            "key": "temperatura_tensao"
-        }
-
-    ]
-
-    colunas_bateria = st.columns(2)
-
-    # ---------------------------------------------------------
-    # PROCESSAMENTO DOS HEATMAPS
-    # ---------------------------------------------------------
-
-    for coluna, mapa in zip(
-        colunas_bateria,
-        heatmaps_bateria
-    ):
-
-        with coluna:
-
-            st.markdown(
-                f"**{mapa['titulo']}**"
-            )
-
-            # Verifica se as variáveis existem
-            if (
-                mapa["chave_x"] not in dados
-                or mapa["chave_y"] not in dados
-            ):
-
-                st.warning(
-                    f"Variáveis não encontradas: "
-                    f"{mapa['chave_x']} ou {mapa['chave_y']}."
-                )
-
+    st.subheader("Análise térmica e elétrica da bateria")
+    st.caption("Relação entre a temperatura da bateria e seus parâmetros elétricos, na condição selecionada.")
+    mapas = [("Temperatura × Corrente da bateria", "TempBattery_com", "CorrenteFiltro"),
+             ("Temperatura × Tensão da bateria", "TempBattery_com", "TensaoChumbo_com")]
+    cols = st.columns(2)
+    for col, (titulo, sx, sy) in zip(cols, mapas):
+        with col:
+            st.markdown(f"**{titulo}**")
+            if f"{prefixo}{sx}" not in dados or f"{prefixo}{sy}" not in dados:
+                st.warning(f"Variáveis não encontradas: {prefixo}{sx} ou {prefixo}{sy}.")
                 continue
+            x, y = extrair(dados, prefixo, [f"{prefixo}{sx}", f"{prefixo}{sy}"], cod)
+            heatmap_2d(x, y, rotulo_var(sx), rotulo_var(sy), f"hmb_{prefixo}_{sy}_{cod}", "400px", titulo=titulo)
 
-            # Extrai os pares de dados respeitando a condição
-            # operacional selecionada na página
-            x, y = extrair_par_condicionado(
-                dados,
-                mapa["chave_x"],
-                mapa["chave_y"],
-                nome_condicao
-            )
 
-            if len(x) < 5:
+# =======================================================================
+# 10. ANÁLISE ITEMM (emissões, proporções, balanço)
+# =======================================================================
+def plotar_emissoes_e_tempos(vars_ftp, vars_hgw, nome_ftp, nome_hgw):
+    ciclos = [("ITEMM FTP", vars_ftp or {}, "f"), ("ITEMM HGW", vars_hgw or {}, "h")]
+    nomes = [c[0] for c in ciclos]
+    sub = f"FTP: {nome_ftp} | HIGHWAY: {nome_hgw}"
 
-                st.info(
-                    "Amostras insuficientes para gerar este heatmap."
-                )
+    def lista(sufixo):
+        return [None if (v := get_escalar(d, f"{p}{sufixo}")) is None else round(v, 2) for _, d, p in ciclos]
 
+    estilo_titulo = {"left": "center", "top": "1%", "textStyle": {"fontSize": 17, "fontWeight": "bold"},
+                     "subtextStyle": {"fontSize": 11, "color": "#757575"}}
+
+    media, ref, co2 = lista("emissao_media_g_km"), lista("emissao_ref"), lista("co2_total_g")
+    if any(v is not None for v in media + ref + co2):
+        grafico({
+            "title": {"text": "Emissões de CO₂", "subtext": sub, **estilo_titulo},
+            "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}},
+            "legend": {"top": "16%", "data": ["Emissão média", "Referência", "CO₂ total"]},
+            "grid": {"left": "10%", "right": "15%", "bottom": "12%", "top": "28%", "containLabel": True},
+            "xAxis": {"type": "category", "data": nomes},
+            "yAxis": [{"type": "value", "name": "Emissão (g/km)", "nameLocation": "middle", "nameGap": 45},
+                      {"type": "value", "name": "CO₂ total (g)", "position": "right", "nameLocation": "middle",
+                       "nameGap": 55, "splitLine": {"show": False}}],
+            "series": [
+                {"name": "Emissão média", "type": "bar", "yAxisIndex": 0, "data": media, "barMaxWidth": 45,
+                 "itemStyle": {"color": COR_BOOST}, "label": {"show": True, "position": "top", "formatter": FMT_DEC}},
+                {"name": "Referência", "type": "bar", "yAxisIndex": 0, "data": ref, "barMaxWidth": 45,
+                 "itemStyle": {"color": COR_NEUTRO}, "label": {"show": True, "position": "top", "formatter": FMT_DEC}},
+                {"name": "CO₂ total", "type": "line", "yAxisIndex": 1, "data": co2, "symbol": "circle",
+                 "symbolSize": 10, "lineStyle": {"width": 3, "color": COR_REGEN}, "itemStyle": {"color": COR_REGEN},
+                 "label": {"show": True, "position": "top", "formatter": FMT_DEC}},
+            ],
+        }, "440px", "grafico_emissoes_itemm")
+    else:
+        st.warning("Não foram encontrados dados de emissão nos arquivos MAT.")
+
+    t_ss, t_cut = lista("s_start_stop"), lista("s_cut")
+    if any(v is not None for v in t_ss + t_cut):
+        grafico({
+            "title": {"text": "Tempos de Start-Stop e Cut-off", "subtext": sub, **estilo_titulo},
+            "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}},
+            "legend": {"top": "16%", "data": ["Start-Stop", "Cut-off"]},
+            "grid": {"left": "10%", "right": "5%", "bottom": "12%", "top": "28%", "containLabel": True},
+            "xAxis": {"type": "category", "data": nomes},
+            "yAxis": {"type": "value", "name": "Tempo (s)", "nameLocation": "middle", "nameGap": 45},
+            "series": [
+                {"name": "Start-Stop", "type": "bar", "data": t_ss, "barMaxWidth": 50,
+                 "itemStyle": {"color": COR_ALTERNADOR}, "label": {"show": True, "position": "top", "formatter": FMT_TEMPO}},
+                {"name": "Cut-off", "type": "bar", "data": t_cut, "barMaxWidth": 50,
+                 "itemStyle": {"color": COR_REGEN}, "label": {"show": True, "position": "top", "formatter": FMT_TEMPO}},
+            ],
+        }, "420px", "grafico_tempos_start_stop_cutoff")
+    else:
+        st.warning("Não foram encontrados dados de tempo de Start-Stop ou Cut-off.")
+
+    st.subheader("Eventos de Start-Stop")
+    cols = st.columns(2)
+    for col, (nome, d, p) in zip(cols, ciclos):
+        q = get_escalar(d, f"{p}_ss_eventos_validos")
+        col.metric(f"Eventos válidos — {nome}", fmt_br(q, 0) if q is not None else "N/D")
+
+
+def plotar_barras_horizontais_condicoes(ciclos, dados_segmentos):
+    series = []
+    for nome, cor, chave in (("Boost", COR_BOOST, "Boost"), ("Neutro / Cargas", COR_NEUTRO, "Neutro"),
+                             ("Alternador", COR_ALTERNADOR, "Alternador"), ("Frenagem Reg.", COR_REGEN, "Frenagem")):
+        series.append({"name": nome, "type": "bar", "stack": "total",
+                       "itemStyle": {"color": cor, "borderColor": "#333", "borderWidth": 0.5},
+                       "label": {"show": True, "formatter": "{c}%", "color": "#fff", "fontWeight": "bold"},
+                       "data": [round(float(v), 2) for v in dados_segmentos[chave]]})
+    grafico({
+        "title": {"text": "Distribuição Percentual por Condição (FTP-75 e Highway)", "left": "center"},
+        "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}},
+        "legend": {"top": "8%", "data": ["Boost", "Neutro / Cargas", "Alternador", "Frenagem Reg."]},
+        "grid": {"left": "12%", "right": "8%", "bottom": "10%", "top": "18%", "containLabel": True},
+        "xAxis": {"type": "value", "max": 100, "axisLabel": {"formatter": "{value}%"},
+                  "splitLine": {"show": True, "lineStyle": {"type": "dashed"}}},
+        "yAxis": {"type": "category", "data": ciclos},
+        "series": series,
+    }, "450px", "analise_barras_condicoes")
+
+
+def plotar_balanco_carga(categorias, dados):
+    series = []
+    for nome, cor, chave in (("Cargas Auxiliares", COR_CARGAS_AUX, "Cargas Auxiliares"), ("Boost", COR_BOOST, "Boost"),
+                             ("Frenagem Regenerativa", COR_REGEN, "Frenagem"), ("Alternador", COR_ALTERNADOR, "Alternador")):
+        series.append({"name": nome, "type": "bar", "itemStyle": {"color": cor, "borderColor": "#000", "borderWidth": 0.5},
+                       "label": {"show": True, "position": "outside", "fontWeight": "bold", "formatter": FMT_DEC},
+                       "data": [round(float(v), 2) for v in dados[chave]]})
+    grafico({
+        "title": {"text": "Balanço de Carga por Modo (FTP-75 e Highway)", "left": "center"},
+        "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}},
+        "legend": {"top": "8%", "data": ["Cargas Auxiliares", "Boost", "Frenagem Regenerativa", "Alternador"]},
+        "grid": {"left": "6%", "right": "6%", "bottom": "10%", "top": "18%", "containLabel": True},
+        "xAxis": {"type": "category", "data": categorias, "axisTick": {"alignWithLabel": True},
+                  "axisLine": {"onZero": True}},
+        "yAxis": {"type": "value", "name": "Balanço de Carga (Ah)", "nameLocation": "middle", "nameGap": 35,
+                  "splitLine": {"show": True, "lineStyle": {"type": "dashed"}}},
+        "series": series,
+    }, "480px", "analise_balanco")
+
+
+def pagina_analise(arquivo_1, arquivo_2):
+    st.title("Análise de Condições Operacionais — ITEMM")
+    st.markdown("Análise dos resultados obtidos nos ensaios ITEMM, considerando os ciclos FTP e Highway.")
+    if not (arquivo_1 and arquivo_2):
+        st.info("Envie os dois arquivos MAT: o arquivo com os dados FTP e o arquivo com os dados Highway.")
+        return
+    vf, vh = carregar_arquivo_mat(arquivo_1), carregar_arquivo_mat(arquivo_2)
+
+    st.divider()
+    st.markdown("### 1. Análise de Emissão de CO2 e Start-Stop")
+    plotar_emissoes_e_tempos(vf, vh, arquivo_1.name, arquivo_2.name)
+    st.divider()
+
+    obrig_f = [f"f{m['pct']}" for m in MODOS] + [f"f{m['cap']}" for m in MODOS]
+    obrig_h = [f"h{m['pct']}" for m in MODOS] + [f"h{m['cap']}" for m in MODOS]
+    falt_f = [n for n in obrig_f if n not in vf]
+    falt_h = [n for n in obrig_h if n not in vh]
+    if falt_f:
+        st.error("O arquivo FTP não contém estas variáveis: " + ", ".join(falt_f))
+    if falt_h:
+        st.error("O arquivo Highway não contém estas variáveis: " + ", ".join(falt_h))
+    if falt_f or falt_h:
+        return
+
+    def esc(d, n):
+        v = get_escalar(d, n)
+        if v is None:
+            raise ValueError(f"A variável '{n}' está vazia ou ausente.")
+        return v
+
+    pct = {m["curto"]: [esc(vh, f"h{m['pct']}"), esc(vf, f"f{m['pct']}")] for m in MODOS}
+    st.markdown("### 3. Proporção das Condições por Ciclo (%)")
+    plotar_barras_horizontais_condicoes(["ITEMM HGW", "ITEMM FTP"], pct)
+    st.markdown("---")
+
+    cap = {m["curto"]: [esc(vf, f"f{m['cap']}"), esc(vh, f"h{m['cap']}")] for m in MODOS}
+    cap["Cargas Auxiliares"] = cap.pop("Neutro")
+    st.markdown("### 4. Balanço de Carga por Modo (Ah)")
+    plotar_balanco_carga(["ITEMM FTP", "ITEMM HGW"], cap)
+
+
+# =======================================================================
+# 11. CORRELAÇÕES
+# =======================================================================
+def pagina_correlacoes(arquivo_1, arquivo_2):
+    st.title("Correlações entre variáveis")
+    ciclos = ciclos_carregados(arquivo_1, arquivo_2)
+    if not ciclos:
+        st.info("Envie pelo menos um arquivo .mat na barra lateral.")
+        return
+    nome = st.selectbox("Ciclo:", [c["nome"] for c in ciclos], key="cor_ciclo")
+    c = next(x for x in ciclos if x["nome"] == nome)
+    dados, pref = c["dados"], c["prefixo"]
+    sufixos = listar_series(dados, pref)
+    if len(sufixos) < 2:
+        st.warning("Séries insuficientes neste arquivo.")
+        return
+
+    condicoes = {"Todas as amostras": None}
+    for m in MODOS:
+        if f"{pref}condicao_{m['cod']}" in dados:
+            condicoes[m["curto"]] = m["cod"]
+    cond_nome = st.selectbox("Condição operacional:", list(condicoes.keys()), key=f"cor_cond_{pref}")
+    cod = condicoes[cond_nome]
+
+    padrao = [s for s in ["Speed_com", "SOC_calc", "CorrenteFiltro", "TensaoChumbo_com", "RPM_com",
+                          "LoadCarga_com", "Throttle_com", "TempBattery_com"] if s in sufixos]
+    sel = st.multiselect("Variáveis na matriz:", sufixos, default=padrao, format_func=rotulo_var,
+                         key=f"cor_vars_{pref}")
+    if len(sel) < 2:
+        st.info("Selecione ao menos duas variáveis.")
+        return
+
+    arrs = extrair(dados, pref, [f"{pref}{s}" for s in sel], cod)
+    df = pd.DataFrame({rotulo_var(s): a for s, a in zip(sel, arrs)})
+    if len(df) < 10:
+        st.warning("Amostras insuficientes para calcular correlações.")
+        return
+    corr = df.corr()
+    rot = list(corr.columns)
+    dados_hm = [[j, i, round(float(corr.iloc[i, j]), 3) if np.isfinite(corr.iloc[i, j]) else 0.0]
+                for i in range(len(rot)) for j in range(len(rot))]
+    st.subheader("Matriz de correlação (Pearson)")
+    grafico({
+        "tooltip": {"formatter": js("""function(p){ return '<b>' + __R__[p.value[1]] + '</b> × <b>' +
+            __R__[p.value[0]] + '</b><br>r = ' + Number(p.value[2]).toFixed(3).replace('.', ','); }"""
+                                    .replace("__R__", json.dumps(rot, ensure_ascii=False)))},
+        "grid": {"left": "22%", "right": "5%", "bottom": "26%", "top": "4%", "containLabel": True},
+        "xAxis": {"type": "category", "data": rot, "axisLabel": {"rotate": 40, "fontSize": 10}},
+        "yAxis": {"type": "category", "data": rot, "axisLabel": {"fontSize": 10}},
+        "visualMap": {"min": -1, "max": 1, "calculable": True, "orient": "horizontal", "left": "center",
+                      "bottom": "0%", "inRange": {"color": ["#2166ac", "#f7f7f7", "#b2182b"]}},
+        "series": [{"type": "heatmap", "data": dados_hm,
+                    "label": {"show": True, "fontSize": 10, "formatter": js(
+                        "function(p){ return Number(p.value[2]).toFixed(2).replace('.', ','); }")}}],
+    }, "560px", f"cor_matriz_{pref}")
+
+    pares = []
+    for i in range(len(rot)):
+        for j in range(i + 1, len(rot)):
+            r = corr.iloc[i, j]
+            if np.isfinite(r):
+                pares.append({"Variável A": rot[i], "Variável B": rot[j], "r": round(float(r), 3), "|r|": round(abs(float(r)), 3)})
+    if pares:
+        st.markdown("**Maiores correlações (em módulo)**")
+        st.dataframe(pd.DataFrame(pares).sort_values("|r|", ascending=False).head(10),
+                     use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.subheader("Dispersão colorida por modo")
+    c1, c2 = st.columns(2)
+    sx = c1.selectbox("Eixo X:", sufixos, index=sufixos.index("Speed_com") if "Speed_com" in sufixos else 0,
+                      format_func=rotulo_var, key=f"cor_x_{pref}")
+    resto = [s for s in sufixos if s != sx]
+    sy = c2.selectbox("Eixo Y:", resto, format_func=rotulo_var, key=f"cor_y_{pref}")
+    x, y, md = extrair(dados, pref, [f"{pref}{sx}", f"{pref}{sy}"], cod, com_modos=True)
+    if len(x) < 10:
+        st.warning("Amostras insuficientes para a dispersão.")
+        return
+    rng = np.random.default_rng(0)
+    series = []
+    for k, nm in enumerate(CURTOS_IDX):
+        idx = np.flatnonzero(md == k)
+        if idx.size == 0:
+            continue
+        if idx.size > 3000:
+            idx = rng.choice(idx, 3000, replace=False)
+        cor = "#bbbbbb" if k == 0 else MODOS[k - 1]["cor"]
+        series.append({"name": nm, "type": "scatter", "symbolSize": 5, "itemStyle": {"color": cor, "opacity": 0.55},
+                       "data": to_pts(x[idx], y[idx])})
+    r = float(np.corrcoef(x, y)[0, 1]) if np.ptp(x) > 0 and np.ptp(y) > 0 else float("nan")
+    if np.isfinite(r):
+        a, b = np.polyfit(x, y, 1)
+        xs = np.array([x.min(), x.max()])
+        series.append({"name": "Regressão linear", "type": "line", "showSymbol": False,
+                       "lineStyle": {"color": "#111", "width": 2, "type": "dashed"},
+                       "data": to_pts(xs, a * xs + b)})
+    grafico({
+        "tooltip": {"trigger": "item"},
+        "legend": {"top": "2%", "data": [s["name"] for s in series]},
+        "grid": {"left": "8%", "right": "4%", "bottom": "14%", "top": "12%", "containLabel": True},
+        "xAxis": {"type": "value", "name": rotulo_var(sx), "nameLocation": "middle", "nameGap": 30, "scale": True},
+        "yAxis": {"type": "value", "name": rotulo_var(sy), "scale": True},
+        "dataZoom": [{"type": "inside", "xAxisIndex": 0}, {"type": "inside", "yAxisIndex": 0}],
+        "series": series,
+    }, "500px", f"cor_scatter_{pref}")
+    if np.isfinite(r):
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Correlação (r)", fmt_br(r, 3))
+        m2.metric("R²", fmt_br(r ** 2, 3))
+        m3.metric("Inclinação", fmt_br(float(a), 4))
+        st.caption("Para legibilidade, cada modo exibe no máximo 3.000 pontos amostrados; r, R² e a regressão usam todas as amostras.")
+
+
+# =======================================================================
+# 12. COMPARAÇÃO
+# =======================================================================
+def tabela_estatistica(arquivos, prefixo, cod):
+    registros, ignoradas = [], 0
+    for arq in arquivos:
+        dados = carregar_arquivo_mat(arq)
+        if not dados:
+            continue
+        mascara = None
+        if cod is not None:
+            cond = get_serie(dados, f"{prefixo}condicao_{cod}")
+            if cond is None:
+                st.warning(f"{arq.name}: condição '{cod}' não encontrada. Arquivo ignorado.")
                 continue
-
-            if np.ptp(x) == 0 or np.ptp(y) == 0:
-
-                st.info(
-                    "Não há variação suficiente nos sinais "
-                    "para construir este heatmap."
-                )
-
+            mascara = np.isfinite(cond) & (cond > 0)
+            if not mascara.any():
+                st.warning(f"{arq.name}: não existem amostras para a condição selecionada.")
                 continue
-
-            # -------------------------------------------------
-            # HISTOGRAMA BIDIMENSIONAL
-            # -------------------------------------------------
-
-            matriz, limites_x, limites_y = np.histogram2d(
-                x,
-                y,
-                bins=24
-            )
-
-            # Percentual de amostras em cada região
-            matriz_percentual = (
-                matriz / len(x)
-            ) * 100
-
-            # -------------------------------------------------
-            # RÓTULOS DOS EIXOS
-            # -------------------------------------------------
-
-            rotulos_x = [
-                formatar_numero(
-                    (limites_x[i] + limites_x[i + 1]) / 2,
-                    1
-                )
-                for i in range(len(limites_x) - 1)
-            ]
-
-            rotulos_y = [
-                formatar_numero(
-                    (limites_y[i] + limites_y[i + 1]) / 2,
-                    1
-                )
-                for i in range(len(limites_y) - 1)
-            ]
-
-            # -------------------------------------------------
-            # DADOS DO HEATMAP
-            # -------------------------------------------------
-
-            dados_heatmap = []
-
-            for i in range(matriz_percentual.shape[0]):
-
-                for j in range(matriz_percentual.shape[1]):
-
-                    valor = matriz_percentual[i, j]
-
-                    if valor > 0:
-
-                        dados_heatmap.append([
-                            i,
-                            j,
-                            round(float(valor), 3)
-                        ])
-
-            maior_percentual = float(
-                np.max(matriz_percentual)
-            )
-
-            # -------------------------------------------------
-            # CONFIGURAÇÃO ECHARTS
-            # -------------------------------------------------
-
-            opcoes_heatmap_bateria = {
-
-                "tooltip": {
-
-                    "position": "top",
-
-                    "formatter": JsCode(f"""
-                        function(params) {{
-
-                            const rotulosX = {rotulos_x!r};
-                            const rotulosY = {rotulos_y!r};
-
-                            return (
-                                '<b>{mapa["titulo"]}</b>' +
-                                '<br>{mapa["nome_x"]}: ' +
-                                rotulosX[params.value[0]] +
-                                '<br>{mapa["nome_y"]}: ' +
-                                rotulosY[params.value[1]] +
-                                '<br>Concentração: ' +
-                                Number(params.value[2])
-                                    .toFixed(3)
-                                    .replace('.', ',') + '%'
-                            );
-
-                        }}
-                    """).js_code
-
-                },
-
-                "grid": {
-
-                    "left": "17%",
-                    "right": "10%",
-                    "bottom": "25%",
-                    "top": "12%",
-                    "containLabel": True
-
-                },
-
-                "xAxis": {
-
-                    "type": "category",
-
-                    "name": mapa["nome_x"],
-
-                    "nameLocation": "middle",
-
-                    "nameGap": 40,
-
-                    "data": rotulos_x,
-
-                    "splitLine": {
-                        "show": False
-                    },
-
-                    "axisLabel": {
-
-                        "rotate": 45,
-
-                        "interval": 3,
-
-                        "fontSize": 9
-
-                    }
-
-                },
-
-                "yAxis": {
-
-                    "type": "category",
-
-                    "name": mapa["nome_y"],
-
-                    "nameLocation": "middle",
-
-                    "nameGap": 55,
-
-                    "data": rotulos_y,
-
-                    "splitLine": {
-                        "show": False
-                    },
-
-                    "axisLabel": {
-
-                        "fontSize": 9
-
-                    }
-
-                },
-
-                "visualMap": {
-
-                    "min": 0,
-
-                    "max": maior_percentual,
-
-                    "calculable": True,
-
-                    "orient": "horizontal",
-
-                    "left": "center",
-
-                    "bottom": "0%",
-
-                    "dimension": 2,
-
-                    "text": [
-                        "Maior",
-                        "Menor"
-                    ]
-
-                },
-
-                "series": [
-
-                    {
-
-                        "name": "Concentração de amostras",
-
-                        "type": "heatmap",
-
-                        "data": dados_heatmap,
-
-                        "emphasis": {
-
-                            "itemStyle": {
-
-                                "shadowBlur": 8
-
-                            }
-
-                        }
-
-                    }
-
-                ]
-
-            }
-
-            st_echarts(
-
-                options=opcoes_heatmap_bateria,
-
-                height="400px",
-
-                key=(
-                    f"heatmap_bateria_{prefixo}_"
-                    f"{mapa['key']}_{chave_ciclo if 'chave_ciclo' in locals() else prefixo}"
-                )
-
-            )
-
-            st.caption(
-                f"Total de amostras utilizadas: {len(x):,}"
-                .replace(",", ".")
-            )
-
-
-
-
-
+        for nome in dados:
+            if not nome.startswith(prefixo) or nome.startswith(f"{prefixo}condicao_"):
+                continue
+            v = get_serie(dados, nome)
+            if v is None or v.size < 2:
+                continue
+            if mascara is not None:
+                if len(v) != len(mascara):
+                    ignoradas += 1
+                    continue
+                v = v[mascara]
+            v = v[np.isfinite(v)]
+            if v.size == 0:
+                continue
+            p25, p50, p75 = np.percentile(v, [25, 50, 75])
+            registros.append({"Arquivo": arq.name, "Variável": nome[len(prefixo):], "Amostras": int(v.size),
+                              "Mínimo": float(v.min()), "P25": float(p25), "Mediana": float(p50),
+                              "Média": float(v.mean()), "P75": float(p75), "Máximo": float(v.max())})
+    if ignoradas and cod is not None:
+        st.info(f"{ignoradas} variável(is) ignoradas por não terem o mesmo número de amostras da máscara de condição.")
+    return pd.DataFrame(registros)
+
+
+def grafico_boxplot_arquivos(df_var, variavel, subtitulo, chave):
+    nomes = df_var["Arquivo"].tolist()
+    caixas = [[round(r["Mínimo"], 3), round(r["P25"], 3), round(r["Mediana"], 3), round(r["P75"], 3),
+               round(r["Máximo"], 3)] for _, r in df_var.iterrows()]
+    medias = [[i, round(float(r["Média"]), 3)] for i, (_, r) in enumerate(df_var.iterrows())]
+    grafico({
+        "title": {"text": f"Comparação de {variavel}", "subtext": subtitulo + " | hastes: mín–máx, caixa: P25–P75, ponto: média",
+                  "left": "center", "top": "2%", "textStyle": {"fontSize": 17, "fontWeight": "bold"},
+                  "subtextStyle": {"fontSize": 11, "color": "#757575"}},
+        "tooltip": {"trigger": "item"},
+        "grid": {"left": "10%", "right": "6%", "bottom": "25%", "top": "24%", "containLabel": True},
+        "xAxis": {"type": "category", "data": nomes, "axisLabel": {"rotate": 35, "interval": 0, "fontSize": 9}},
+        "yAxis": {"type": "value", "name": variavel, "scale": True, "splitLine": {"show": False}},
+        "series": [
+            {"name": "Distribuição", "type": "boxplot", "data": caixas,
+             "itemStyle": {"color": "#c9b3d6", "borderColor": COR_BOOST}},
+            {"name": "Média", "type": "scatter", "data": medias, "symbolSize": 11,
+             "itemStyle": {"color": COR_ALTERNADOR, "borderColor": "#fff"}, "z": 10,
+             "tooltip": {"formatter": js("function(p){ return 'Média: <b>' + Number(p.value[1]).toFixed(2).replace('.', ',') + '</b>'; }")}},
+        ],
+    }, "560px", chave)
+
+
+def exibir_kpis_e_delta(arquivos, prefixo, chave):
+    linhas = []
+    for arq in arquivos:
+        d = carregar_arquivo_mat(arq)
+        linha = {"Arquivo": arq.name}
+        for suf, (rot, un) in KPIS_ESC.items():
+            linha[f"{rot} ({un})"] = get_escalar(d, f"{prefixo}{suf}")
+        linhas.append(linha)
+    df = pd.DataFrame(linhas)
+    colunas = [c for c in df.columns[1:] if df[c].notna().any()]
+    if not colunas:
+        st.info("Nenhum KPI escalar encontrado nos arquivos.")
+        return
+    df = df[["Arquivo"] + colunas]
+    st.markdown("**KPIs escalares por arquivo**")
+    st.dataframe(df.round(3), use_container_width=True, hide_index=True)
+
+    ref = st.selectbox("Ensaio de referência:", df["Arquivo"].tolist(), key=f"kpi_ref_{chave}")
+    base = df.loc[df["Arquivo"] == ref, colunas].iloc[0]
+    delta = df.copy()
+    for c in colunas:
+        b = base[c]
+        delta[c] = (df[c] - b) / abs(b) * 100 if pd.notna(b) and b != 0 else np.nan
+    st.markdown("**Δ% em relação à referência**")
+    st.dataframe(delta.round(2), use_container_width=True, hide_index=True)
+    st.download_button("⬇️ KPIs (CSV)", csv_bytes(df.round(4)), f"kpis_{chave}.csv", "text/csv",
+                       key=f"kpi_dl_{chave}")
+
+    if len(df) >= 2:
+        st.markdown("**Radar normalizado** (100% = maior valor entre os ensaios)")
+        padrao = colunas[:6]
+        sel = st.multiselect("KPIs no radar:", colunas, default=padrao, key=f"radar_sel_{chave}")
+        if len(sel) >= 3:
+            maximos = {c: float(df[c].abs().max()) or 1.0 for c in sel}
+            grafico({
+                "tooltip": {},
+                "legend": {"top": "2%", "type": "scroll", "data": df["Arquivo"].tolist()},
+                "radar": {"indicator": [{"name": c, "max": 100} for c in sel], "radius": "62%", "center": ["50%", "56%"]},
+                "series": [{"type": "radar", "data": [
+                    {"name": r["Arquivo"], "value": [round(abs(float(r[c])) / maximos[c] * 100, 1) if pd.notna(r[c]) else 0
+                                                     for c in sel]} for _, r in df.iterrows()]}],
+            }, "520px", f"radar_{chave}")
+        else:
+            st.caption("Selecione ao menos 3 KPIs para o radar.")
+
+
+def exibir_tendencia(arquivos, prefixo, chave):
+    itens = []
+    for arq in arquivos:
+        info = parse_nome(arq.name)
+        if info:
+            itens.append((arq, info))
+    if len(itens) < 2:
+        st.info("A tendência por data requer ao menos 2 arquivos nomeados como "
+                "'AGM - L2 - 23092026 - FTP.mat' (bateria - data ddmmaaaa - ciclo).")
+        return
+    opcoes = {f"{rot} ({un})": suf for suf, (rot, un) in KPIS_ESC.items()}
+    kpi_nome = st.selectbox("KPI:", list(opcoes.keys()), key=f"tend_kpi_{chave}")
+    suf = opcoes[kpi_nome]
+    por_bat = {}
+    for arq, info in itens:
+        v = get_escalar(carregar_arquivo_mat(arq), f"{prefixo}{suf}")
+        if v is not None:
+            por_bat.setdefault(info["bateria"], []).append([info["data"].strftime("%Y-%m-%d"), round(v, 4), arq.name])
+    if not por_bat:
+        st.warning("O KPI selecionado não existe nos arquivos.")
+        return
+    series = []
+    for bat, pts in sorted(por_bat.items()):
+        pts.sort(key=lambda p: p[0])
+        series.append({"name": f"Bateria {bat}", "type": "line", "symbolSize": 9, "data": pts,
+                       "label": {"show": True, "position": "top", "formatter": js(
+                           "function(p){ return Number(p.value[1]).toFixed(2).replace('.', ','); }")}})
+    grafico({
+        "title": {"text": f"Tendência — {kpi_nome}", "left": "center"},
+        "tooltip": {"trigger": "item", "formatter": js("""function(p){ return '<b>' + p.seriesName + '</b><br>' + p.value[0] +
+            '<br>' + Number(p.value[1]).toFixed(2).replace('.', ',') + '<br><small>' + p.value[2] + '</small>'; }""")},
+        "legend": {"top": "8%"},
+        "grid": {"left": "8%", "right": "6%", "bottom": "12%", "top": "20%", "containLabel": True},
+        "xAxis": {"type": "time", "axisLabel": {"formatter": "{dd}/{MM}/{yyyy}"}},
+        "yAxis": {"type": "value", "name": kpi_nome, "scale": True, "splitLine": {"show": False}},
+        "series": series,
+    }, "460px", f"tend_{chave}")
+
+
+def exibir_graficos_modos(arquivos, prefixo, chave):
+    nomes, pcts, caps = [], {m["nome"]: [] for m in MODOS}, {m["nome"]: [] for m in MODOS}
+    for arq in arquivos:
+        d = carregar_arquivo_mat(arq)
+        if not d:
+            continue
+        nomes.append(arq.name)
+        for m in MODOS:
+            p = get_escalar(d, f"{prefixo}{m['pct']}")
+            if p is None:
+                c = get_serie(d, f"{prefixo}condicao_{m['cod']}")
+                if c is not None:
+                    v = c[np.isfinite(c)]
+                    p = float(np.sum(v > 0) / v.size * 100) if v.size else None
+            pcts[m["nome"]].append(None if p is None else round(p, 2))
+            ah = get_escalar(d, f"{prefixo}{m['cap']}")
+            caps[m["nome"]].append(None if ah is None else round(ah, 2))
+    cores = {m["nome"]: m["cor"] for m in MODOS}
+    if any(v is not None for lst in pcts.values() for v in lst):
+        st.subheader("Distribuição percentual dos modos operacionais")
+        barras_agrupadas(nomes, pcts, cores, "Percentual por modo operacional",
+                         "Comparação entre os arquivos analisados", "Participação (%)", f"comp_pct_{chave}")
+    else:
+        st.warning("Não foram encontrados dados de percentual dos modos operacionais.")
+    if any(v is not None for lst in caps.values() for v in lst):
+        st.divider()
+        st.subheader("Capacidade elétrica por modo operacional")
+        barras_agrupadas(nomes, caps, cores, "Capacidade por modo operacional",
+                         "Comparação das capacidades dos arquivos analisados", "Capacidade (Ah)", f"comp_cap_{chave}")
+    else:
+        st.warning("Não foram encontrados dados de capacidade dos modos operacionais.")
+    st.caption("Percentuais e capacidades são indicadores globais extraídos dos arquivos MAT; "
+               "não são recalculados pelo filtro de condição das estatísticas.")
+
+
+def exibir_comparacao_temporal(arquivos, prefixo, chave):
+    if len(arquivos) < 2:
+        st.info("Selecione pelo menos dois arquivos para habilitar a comparação temporal.")
+        return
+    idx = list(range(len(arquivos)))
+    ca, cb = st.columns(2)
+    ia = ca.selectbox("Primeiro arquivo:", idx, format_func=lambda i: arquivos[i].name, key=f"tmp_a_{chave}")
+    ib = cb.selectbox("Segundo arquivo:", idx, index=1, format_func=lambda i: arquivos[i].name, key=f"tmp_b_{chave}")
+    if ia == ib:
+        st.warning("Selecione dois arquivos diferentes.")
+        return
+    da, db = carregar_arquivo_mat(arquivos[ia]), carregar_arquivo_mat(arquivos[ib])
+    if not da or not db:
+        return
+    comuns = sorted(set(listar_series(da, prefixo)) & set(listar_series(db, prefixo)) - {"Speed_com"},
+                    key=lambda s: list(VARS).index(s) if s in VARS else 999)
+    if not comuns:
+        st.warning("Os arquivos não possuem variáveis temporais em comum para o eixo direito.")
+        return
+    c1, c2, c3 = st.columns(3)
+    sufixo = c1.selectbox("Variável do eixo direito (nos dois ensaios):", comuns, format_func=rotulo_var,
+                          index=comuns.index("SOC_calc") if "SOC_calc" in comuns else 0, key=f"tmp_var_{chave}")
+    layout = c2.radio("Layout:", ["Separados", "Sobrepostos"], horizontal=True, key=f"tmp_lay_{chave}")
+    eixo = c3.radio("Eixo X:", ["Tempo (s)", "Distância (km)"], horizontal=True, key=f"tmp_eixo_{chave}")
+    if layout == "Sobrepostos":
+        grafico_sobreposto(da, db, arquivos[ia].name, arquivos[ib].name, prefixo, sufixo, eixo, f"tmp_sob_{chave}")
+        return
+    estilo = st.selectbox("Visualização dos modos:", ESTILOS, key=f"tmp_est_{chave}")
+    sel = st.multiselect("Modos exibidos:", [m["nome"] for m in MODOS], default=[m["nome"] for m in MODOS],
+                         key=f"tmp_msel_{chave}")
+    modos_idx = [i for i, m in enumerate(MODOS, start=1) if m["nome"] in sel]
+    fases = [("Fim transiente a frio", 505.0), ("Fim fase estabilizada", 1372.0)] \
+        if prefixo == "f" and st.checkbox("Mostrar fases do FTP (505 s / 1372 s)", key=f"tmp_fases_{chave}") else None
+    st.markdown("#### Primeiro ensaio")
+    grafico_temporal(da, prefixo, sufixo, arquivos[ia].name, f"tmp_ga_{chave}", estilo, modos_idx, None, eixo, fases)
+    st.markdown("#### Segundo ensaio")
+    grafico_temporal(db, prefixo, sufixo, arquivos[ib].name, f"tmp_gb_{chave}", estilo, modos_idx, None, eixo, fases)
+
+
+def bloco_comparacao(rotulo, arquivos, prefixo, chave):
+    condicoes = {"Todas as amostras": None, "Boost": "boo", "Alternador": "alt",
+                 "Neutro": "neu", "Frenagem regenerativa": "fre"}
+    t_est, t_kpi, t_modos, t_tmp, t_tend = st.tabs(
+        ["Estatísticas", "KPIs & Δ%", "Modos", "Temporal", "Tendência por data"])
+
+    with t_est:
+        cond_nome = st.selectbox(f"Condição operacional — {rotulo}:", list(condicoes.keys()), key=f"comp_cond_{chave}")
+        df = tabela_estatistica(arquivos, prefixo, condicoes[cond_nome])
+        if df.empty:
+            st.warning(f"Não existem dados suficientes para a comparação de {rotulo} na condição selecionada.")
+        else:
+            df = df.sort_values(["Variável", "Arquivo"]).reset_index(drop=True)
+            st.caption(f"{df['Arquivo'].nunique()} arquivo(s) | {df['Variável'].nunique()} variável(is) | "
+                       f"Condição: {cond_nome}")
+            st.subheader(f"Resumo estatístico — {cond_nome}")
+            st.dataframe(df.style.format({c: "{:.2f}" for c in ["Mínimo", "P25", "Mediana", "Média", "P75", "Máximo"]}),
+                         use_container_width=True, hide_index=True)
+            st.download_button("⬇️ Estatísticas (CSV)", csv_bytes(df.round(4)), f"estatisticas_{chave}.csv",
+                               "text/csv", key=f"comp_dl_{chave}")
+            st.divider()
+            st.subheader("Comparação das distribuições")
+            variaveis = sorted(df["Variável"].unique().tolist())
+            var = st.selectbox("Variável para comparar:", variaveis, key=f"comp_var_{chave}",
+                               format_func=lambda s: rotulo_var(s, False) if s in VARS else s)
+            grafico_boxplot_arquivos(df[df["Variável"] == var].reset_index(drop=True),
+                                     rotulo_var(var) if var in VARS else var, f"{rotulo} — {cond_nome}",
+                                     f"comp_box_{chave}")
+    with t_kpi:
+        exibir_kpis_e_delta(arquivos, prefixo, chave)
+    with t_modos:
+        exibir_graficos_modos(arquivos, prefixo, chave)
+    with t_tmp:
+        exibir_comparacao_temporal(arquivos, prefixo, chave)
+    with t_tend:
+        exibir_tendencia(arquivos, prefixo, chave)
 
 
 def renderizar_comparacao_arquivos():
-
-    MAX_ARQUIVOS_COMPARACAO = 10
     st.title("Comparação de Ensaios")
-
-    st.caption(
-        "Compare os indicadores estatísticos de até três ensaios "
-        "FTP e três ensaios Highway."
-    )
-
-    # =========================================================
-    # 1. UPLOAD DOS ARQUIVOS
-    # =========================================================
-
-    col_ftp, col_hgw = st.columns(2)
-
-    with col_ftp:
-
+    st.caption(f"Compare até {MAX_ARQUIVOS_COMPARACAO} ensaios FTP e {MAX_ARQUIVOS_COMPARACAO} ensaios Highway.")
+    c1, c2 = st.columns(2)
+    with c1:
         st.subheader("Arquivos FTP")
-
-        arquivos_ftp = st.file_uploader(
-            f"Selecione até {MAX_ARQUIVOS_COMPARACAO} arquivos FTP (.mat)",
-            type=["mat"],
-            accept_multiple_files=True,
-            key="comparacao_upload_ftp"
-        )
-
-    with col_hgw:
-
+        ftp = st.file_uploader(f"Selecione até {MAX_ARQUIVOS_COMPARACAO} arquivos FTP (.mat)", type=["mat"],
+                               accept_multiple_files=True, key="comparacao_upload_ftp")
+    with c2:
         st.subheader("Arquivos Highway")
-
-        arquivos_hgw = st.file_uploader(
-            f"Selecione até {MAX_ARQUIVOS_COMPARACAO} arquivos Highway (.mat)",
-            type=["mat"],
-            accept_multiple_files=True,
-            key="comparacao_upload_hgw"
-        )
-
-    arquivos_ftp = list(arquivos_ftp or [])
-    arquivos_hgw = list(arquivos_hgw or [])
-
-    if len(arquivos_ftp) > MAX_ARQUIVOS_COMPARACAO:
-    
-        st.warning(
-            f"Limite de {MAX_ARQUIVOS_COMPARACAO} arquivos FTP. "
-            "Somente os primeiros serão utilizados."
-        )
-    
-        arquivos_ftp = arquivos_ftp[:MAX_ARQUIVOS_COMPARACAO]
-    
-    
-    if len(arquivos_hgw) > MAX_ARQUIVOS_COMPARACAO:
-    
-        st.warning(
-            f"Limite de {MAX_ARQUIVOS_COMPARACAO} arquivos Highway. "
-            "Somente os primeiros serão utilizados."
-        )
-    
-        arquivos_hgw = arquivos_hgw[:MAX_ARQUIVOS_COMPARACAO]
-
+        hgw = st.file_uploader(f"Selecione até {MAX_ARQUIVOS_COMPARACAO} arquivos Highway (.mat)", type=["mat"],
+                               accept_multiple_files=True, key="comparacao_upload_hgw")
+    ftp, hgw = list(ftp or []), list(hgw or [])
+    if len(ftp) > MAX_ARQUIVOS_COMPARACAO:
+        st.warning(f"Limite de {MAX_ARQUIVOS_COMPARACAO} arquivos FTP. Somente os primeiros serão utilizados.")
+        ftp = ftp[:MAX_ARQUIVOS_COMPARACAO]
+    if len(hgw) > MAX_ARQUIVOS_COMPARACAO:
+        st.warning(f"Limite de {MAX_ARQUIVOS_COMPARACAO} arquivos Highway. Somente os primeiros serão utilizados.")
+        hgw = hgw[:MAX_ARQUIVOS_COMPARACAO]
     st.divider()
 
-    # =========================================================
-    # 2. CONDIÇÕES OPERACIONAIS
-    # =========================================================
-
-    condicoes = {
-        "Todas as amostras": None,
-        "Boost": "boo",
-        "Alternador": "alt",
-        "Neutro": "neu",
-        "Frenagem regenerativa": "fre"
-    }
-
-    # =========================================================
-    # 3. PROCESSAMENTO DOS ARQUIVOS
-    # =========================================================
-
-    def processar_arquivos(arquivos, prefixo, condicao_selecionada):
-
-        registros = []
-
-        total_ignoradas = 0
-
-        for arquivo in arquivos:
-
-            try:
-
-                arquivo.seek(0)
-
-                dados = carregar_arquivo_mat(arquivo)
-
-                if not isinstance(dados, dict) or not dados:
-
-                    st.warning(
-                        f"Não foi possível carregar {arquivo.name}."
-                    )
-
-                    continue
-
-                # -------------------------------------------------
-                # MÁSCARA DA CONDIÇÃO OPERACIONAL
-                # -------------------------------------------------
-
-                mascara_condicao = None
-
-                if condicao_selecionada is not None:
-
-                    nome_condicao = (
-                        f"{prefixo}condicao_{condicao_selecionada}"
-                    )
-
-                    if nome_condicao not in dados:
-
-                        st.warning(
-                            f"{arquivo.name}: a variável "
-                            f"{nome_condicao} não foi encontrada. "
-                            "Esse arquivo não será utilizado "
-                            "nesta condição."
-                        )
-
-                        continue
-
-                    try:
-
-                        valores_condicao = np.asarray(
-                            dados[nome_condicao],
-                            dtype=float
-                        ).ravel()
-
-                        mascara_condicao = (
-                            np.isfinite(valores_condicao)
-                            & (valores_condicao > 0)
-                        )
-
-                    except (TypeError, ValueError):
-
-                        st.warning(
-                            f"Não foi possível interpretar "
-                            f"{nome_condicao} em {arquivo.name}."
-                        )
-
-                        continue
-
-                    if not np.any(mascara_condicao):
-
-                        st.warning(
-                            f"{arquivo.name}: não existem amostras "
-                            "válidas para a condição selecionada."
-                        )
-
-                        continue
-
-                # -------------------------------------------------
-                # IDENTIFICAÇÃO DAS VARIÁVEIS
-                # -------------------------------------------------
-
-                variaveis = [
-                    nome for nome in dados.keys()
-                    if nome.startswith(prefixo)
-                    and not nome.startswith(f"{prefixo}condicao_")
-                ]
-
-                if not variaveis:
-
-                    st.warning(
-                        f"Nenhuma variável numérica encontrada "
-                        f"em {arquivo.name}."
-                    )
-
-                    continue
-
-                # -------------------------------------------------
-                # PROCESSAMENTO INDIVIDUAL DAS VARIÁVEIS
-                # -------------------------------------------------
-
-                for nome_variavel in variaveis:
-
-                    try:
-
-                        valores = np.asarray(
-                            dados[nome_variavel],
-                            dtype=float
-                        ).ravel()
-
-                        if valores.size == 0:
-                            continue
-
-                        # Aplicação da condição operacional
-                        if mascara_condicao is not None:
-
-                            # Os sinais precisam ter o mesmo
-                            # número de amostras da condição.
-                            if len(valores) != len(mascara_condicao):
-
-                                total_ignoradas += 1
-                                continue
-
-                            valores = valores[mascara_condicao]
-
-                        else:
-
-                            valores = valores[
-                                np.isfinite(valores)
-                            ]
-
-                        valores = valores[
-                            np.isfinite(valores)
-                        ]
-
-                        if valores.size == 0:
-                            continue
-
-                        # -----------------------------------------
-                        # CÁLCULOS ESTATÍSTICOS
-                        # -----------------------------------------
-
-                        registros.append({
-
-                            "Arquivo": arquivo.name,
-
-                            "Variável": nome_variavel[
-                                len(prefixo):
-                            ],
-
-                            "Amostras": int(valores.size),
-
-                            "Mínimo": float(np.min(valores)),
-
-                            "Média": float(np.mean(valores)),
-
-                            "Máximo": float(np.max(valores))
-
-                        })
-
-                    except (TypeError, ValueError):
-                        continue
-
-            except Exception as erro:
-
-                st.error(
-                    f"Erro ao processar {arquivo.name}: {erro}"
-                )
-
-        if total_ignoradas > 0 and condicao_selecionada is not None:
-
-            st.info(
-                f"{total_ignoradas} variável(is) foram ignoradas "
-                "porque não possuem o mesmo número de amostras "
-                "da máscara de condição selecionada."
-            )
-
-        return registros
-
-    
-    #
-    
-    # =========================================================
-    # COMPARAÇÃO TEMPORAL DOS MODOS OPERACIONAIS
-    # =========================================================
-
-    def exibir_comparacao_temporal(arquivos, prefixo, chave):
-
-        st.divider()
-        st.subheader("Comparação Temporal dos Modos Operacionais")
-
-        if len(arquivos) < 2:
-            st.info(
-                "Selecione pelo menos dois arquivos para habilitar "
-                "a comparação temporal."
-            )
-            return
-
-        # -----------------------------------------------------
-        # 1. SELEÇÃO DOS DOIS ARQUIVOS
-        # -----------------------------------------------------
-
-        indices = list(range(len(arquivos)))
-
-        col_a, col_b = st.columns(2)
-
-        with col_a:
-            indice_a = st.selectbox(
-                "Primeiro arquivo:",
-                indices,
-                format_func=lambda i: arquivos[i].name,
-                key=f"temporal_arquivo_a_{chave}"
-            )
-
-        with col_b:
-            indice_b = st.selectbox(
-                "Segundo arquivo:",
-                indices,
-                format_func=lambda i: arquivos[i].name,
-                key=f"temporal_arquivo_b_{chave}"
-            )
-
-        if indice_a == indice_b:
-            st.warning("Selecione dois arquivos diferentes.")
-            return
-
-        arquivo_a = arquivos[indice_a]
-        arquivo_b = arquivos[indice_b]
-
-        # -----------------------------------------------------
-        # 2. CARREGAMENTO DOS DOIS ARQUIVOS
-        # -----------------------------------------------------
-
-        try:
-
-            arquivo_a.seek(0)
-            dados_a = carregar_arquivo_mat(arquivo_a)
-
-            arquivo_b.seek(0)
-            dados_b = carregar_arquivo_mat(arquivo_b)
-
-        except Exception as erro:
-
-            st.error(f"Erro ao carregar os arquivos: {erro}")
-            return
-
-        if not dados_a or not dados_b:
-            return
-
-        # -----------------------------------------------------
-        # 3. IDENTIFICAÇÃO DAS VARIÁVEIS COMUNS
-        # -----------------------------------------------------
-
-        def listar_variaveis_temporais(dados):
-
-            resultado = set()
-
-            for nome, valor in dados.items():
-
-                if not nome.startswith(prefixo):
-                    continue
-
-                sufixo = nome[len(prefixo):]
-
-                # Não disponibilizar condições como eixo direito
-                if sufixo.startswith("condicao"):
-                    continue
-
-                # Velocidade já é utilizada no eixo esquerdo
-                if sufixo == "Speed_com":
-                    continue
-
-                try:
-
-                    serie = np.asarray(
-                        valor,
-                        dtype=float
-                    ).ravel()
-
-                    if serie.size > 1 and np.isfinite(serie).sum() > 1:
-                        resultado.add(sufixo)
-
-                except (TypeError, ValueError):
-                    continue
-
-            return resultado
-
-        variaveis_a = listar_variaveis_temporais(dados_a)
-        variaveis_b = listar_variaveis_temporais(dados_b)
-
-        variaveis_comuns = sorted(
-            variaveis_a.intersection(variaveis_b)
-        )
-
-        if not variaveis_comuns:
-
-            st.warning(
-                "Os arquivos selecionados não possuem variáveis "
-                "temporais em comum para o eixo Y direito."
-            )
-            return
-
-        # -----------------------------------------------------
-        # 4. NOMES AMIGÁVEIS E UNIDADES
-        # -----------------------------------------------------
-
-        nomes_variaveis = {
-            "SOC_calc": "SOC",
-            "SOH_com": "SOH",
-            "RPM_com": "Rotação do motor",
-            "LoadCarga_com": "Carga do motor",
-            "Throttle_com": "Pedal do acelerador",
-            "Aceleracao_com": "Aceleração",
-            "CorrenteBSG_com": "Corrente BSG",
-            "CorrenteFiltro": "Corrente da bateria",
-            "CorrenteConsumoExterno_com": "Corrente de cargas externas",
-            "TensaoBSG_com": "Tensão BSG",
-            "TensaoChumbo_com": "Tensão da bateria",
-            "TensaoAC1_norm": "Tensão Pedal",
-            "TempBattery_com": "Temperatura da bateria",
-            "TempCatalisador_com": "Temperatura do catalisador",
-            "FluxoVolume_com": "Fluxo volumétrico",
-            "FluxoMassa": "Fluxo de massa",
-            "PowerBattery_com": "Potência da bateria",
-            "PowerBSG_com": "Potência BSG",
-            "Energia_liquida_Wh": "Energia líquida acumulada",
-            "fDesc0": "Desconhecido 0",
-            "fDesc1": "Desconhecido 1",
-            "fDesc2": "Desconhecido 2",
-            "fDesc3": "Desconhecido 3",
-            "fDesc4": "Desconhecido 4",
-            "fDesc5": "Desconhecido 5"
-        }
-
-        unidades = {
-            "SOC_calc": "%",
-            "RPM_com": "RPM",
-            "Speed_com": "km/h",
-            "LoadCarga_com": "%",
-            "Throttle_com": "%",
-            "Aceleracao_com": "m/s²",
-            "CorrenteBSG_com": "A",
-            "CorrenteFiltro": "A",
-            "CorrenteConsumoExterno_com": "A",
-            "TensaoBSG_com": "V",
-            "TensaoChumbo_com": "V",
-            "TempBattery_com": "°C",
-            "TempCatalisador_com": "°C",
-            "PowerBattery_com": "W",
-            "PowerBSG_com": "W",
-            "Energia_liquida_Wh": "Wh"
-        }
-
-        def nome_eixo(sufixo):
-
-            nome = nomes_variaveis.get(
-                sufixo,
-                sufixo.replace("_", " ")
-            )
-
-            unidade = unidades.get(sufixo, "")
-
-            if unidade:
-                return f"{nome} ({unidade})"
-
-            return nome
-
-        # Preferência inicial pelo SOC, se disponível
-        indice_soc = (
-            variaveis_comuns.index("SOC_calc")
-            if "SOC_calc" in variaveis_comuns
-            else 0
-        )
-
-        variavel_direita = st.selectbox(
-            "Variável do eixo Y direito (aplicada aos dois gráficos):",
-            variaveis_comuns,
-            index=indice_soc,
-            format_func=nome_eixo,
-            key=(
-                f"temporal_variavel_direita_{chave}_"
-                f"{indice_a}_{indice_b}"
-            )
-        )
-
-        st.caption(
-            "O eixo esquerdo representa a velocidade. "
-            "O eixo direito utiliza a mesma variável nos dois ensaios."
-        )
-
-        # =====================================================
-        # 5. FUNÇÃO PARA GERAR CADA GRÁFICO
-        # =====================================================
-
-        def plotar_grafico_temporal(
-            dados,
-            nome_arquivo,
-            sufixo_variavel,
-            chave_grafico
-        ):
-
-            nome_speed = f"{prefixo}Speed_com"
-            nome_direita = f"{prefixo}{sufixo_variavel}"
-
-            # ---------------------------------------------
-            # EXTRAÇÃO DAS SÉRIES
-            # ---------------------------------------------
-
-            try:
-
-                velocidade = np.asarray(
-                    dados[nome_speed],
-                    dtype=float
-                ).ravel()
-
-                variavel_direita = np.asarray(
-                    dados[nome_direita],
-                    dtype=float
-                ).ravel()
-
-            except (KeyError, TypeError, ValueError):
-
-                st.warning(
-                    f"Não foi possível extrair velocidade ou "
-                    f"{nome_eixo(sufixo_variavel)} de {nome_arquivo}."
-                )
-                return
-
-            n = min(
-                len(velocidade),
-                len(variavel_direita)
-            )
-
-            if n < 2:
-                st.warning("Não existem amostras suficientes.")
-                return
-
-            velocidade = velocidade[:n]
-            variavel_direita = variavel_direita[:n]
-
-            tempo = np.arange(n) * DT_AMOSTRAGEM
-
-            # ---------------------------------------------
-            # CLASSIFICAÇÃO DOS MODOS OPERACIONAIS
-            # ---------------------------------------------
-
-            # Prioridade:
-            # Frenagem > Alternador > Boost > Neutro
-            #
-            # Os modos posteriores sobrescrevem os anteriores
-            # caso existam sobreposições entre as condições.
-
-            modos = np.full(n, "", dtype=object)
-
-            definicao_modos = [
-                (
-                    "neu",
-                    "Neutro (idle)",
-                    "#a9e5f5"
-                ),
-                (
-                    "boo",
-                    "Boost",
-                    "#f5dfa0"
-                ),
-                (
-                    "alt",
-                    "Alternador",
-                    "#c9dfb0"
-                ),
-                (
-                    "fre",
-                    "Frenagem Regenerativa",
-                    "#e6a9d0"
-                )
-            ]
-
-            segmentos_modos = {
-                nome: []
-                for _, nome, _ in definicao_modos
-            }
-
-            for codigo, nome_modo, cor in definicao_modos:
-
-                nome_condicao = f"{prefixo}condicao_{codigo}"
-
-                if nome_condicao not in dados:
-                    continue
-
-                try:
-
-                    condicao = np.asarray(
-                        dados[nome_condicao],
-                        dtype=float
-                    ).ravel()
-
-                    tamanho = min(n, len(condicao))
-
-                    mascara = (
-                        np.isfinite(condicao[:tamanho])
-                        & (condicao[:tamanho] > 0)
-                    )
-
-                    indices_ativos = np.flatnonzero(mascara)
-
-                    modos[indices_ativos] = nome_modo
-
-                except (TypeError, ValueError):
-                    continue
-
-            # ---------------------------------------------
-            # IDENTIFICAÇÃO DOS INTERVALOS CONTÍNUOS
-            # ---------------------------------------------
-
-            i = 0
-
-            while i < n:
-
-                modo_atual = modos[i]
-
-                j = i
-
-                while (
-                    j + 1 < n
-                    and modos[j + 1] == modo_atual
-                ):
-                    j += 1
-
-                if modo_atual != "":
-
-                    segmentos_modos[modo_atual].append([
-                        {
-                            "xAxis": float(tempo[i])
-                        },
-                        {
-                            "xAxis": float(tempo[j] + DT_AMOSTRAGEM)
-                        }
-                    ])
-
-                i = j + 1
-
-            # ---------------------------------------------
-            # PREPARAÇÃO DOS DADOS TEMPORAIS
-            # ---------------------------------------------
-
-            dados_velocidade = [
-                [
-                    round(float(tempo[i]), 2),
-                    (
-                        float(velocidade[i])
-                        if np.isfinite(velocidade[i])
-                        else None
-                    )
-                ]
-                for i in range(n)
-            ]
-
-            dados_direita = [
-                [
-                    round(float(tempo[i]), 2),
-                    (
-                        float(variavel_direita[i])
-                        if np.isfinite(variavel_direita[i])
-                        else None
-                    )
-                ]
-                for i in range(n)
-            ]
-
-            # ---------------------------------------------
-            # SÉRIES E ÁREAS DOS MODOS
-            # ---------------------------------------------
-
-            series = []
-
-            nomes_legenda = [
-                "Velocidade",
-                nome_eixo(sufixo_variavel)
-            ]
-
-            # Cada modo recebe uma série auxiliar com markArea
-            for _, nome_modo, cor in definicao_modos:
-
-                intervalos = segmentos_modos[nome_modo]
-
-                if not intervalos:
-                    continue
-
-                nomes_legenda.append(nome_modo)
-
-                series.append({
-
-                    "name": nome_modo,
-
-                    "type": "line",
-
-                    "data": [],
-
-                    "symbol": "none",
-
-                    "lineStyle": {
-                        "color": cor,
-                        "width": 3
-                    },
-
-                    "markArea": {
-
-                        "silent": True,
-
-                        "z": 0,
-
-                        "itemStyle": {
-
-                            "color": cor,
-
-                            "opacity": 0.38,
-
-                            "borderWidth": 0
-                        },
-
-                        "data": intervalos
-
-                    }
-
-                })
-
-            #
-            # ---------------------------------------------
-            # SÉRIE DE VELOCIDADE
-            # ---------------------------------------------
-            
-            series.append({
-            
-                "name": "Velocidade",
-            
-                "type": "line",
-            
-                "yAxisIndex": 0,
-            
-                "data": dados_velocidade,
-            
-                "showSymbol": False,
-            
-                "connectNulls": False,
-            
-                "z": 5,
-            
-                "lineStyle": {
-                    "color": "rgba(0,119,189,0.8)",
-                    "width": 2.5
-                },
-            
-                "itemStyle": {
-                    "color": "#0077bd"
-                },
-            
-                "areaStyle": {
-            
-                    "color": {
-            
-                        "type": "linear",
-            
-                        "x": 0,
-                        "y": 0,
-                        "x2": 0,
-                        "y2": 1,
-            
-                        "colorStops": [
-            
-                            {
-                                "offset": 0,
-                                "color": "rgba(0,119,189,0.15)"
-                            },
-            
-                            {
-                                "offset": 1,
-                                "color": "rgba(0,119,189,0.02)"
-                            }
-            
-                        ]
-            
-                    }
-            
-                }
-            
-            })
-            # ---------------------------------------------
-            # SÉRIE DA VARIÁVEL NO EIXO DIREITO
-            # ---------------------------------------------
-
-            series.append({
-
-                "name": nome_eixo(sufixo_variavel),
-
-                "type": "line",
-
-                "yAxisIndex": 1,
-
-                "data": dados_direita,
-
-                "showSymbol": False,
-
-                "connectNulls": False,
-
-                "z": 6,
-
-                "lineStyle": {
-                    "color": "#f05a24",
-                    "width": 2
-                },
-
-                "itemStyle": {
-                    "color": "#f05a24"
-                }
-
-            })
-
-            # ---------------------------------------------
-            # CONFIGURAÇÃO DO ECHARTS
-            # ---------------------------------------------
-
-            opcoes = {
-
-                "title": {
-
-                    "text": "Correlação entre velocidade, variável e modos",
-
-                    "subtext": nome_arquivo,
-
-                    "left": "center",
-
-                    "top": "1%",
-
-                    "textStyle": {
-                        "fontSize": 16,
-                        "fontWeight": "bold"
-                    },
-
-                    "subtextStyle": {
-                        "fontSize": 11,
-                        "color": "#777777"
-                    }
-
-                },
-
-                "tooltip": {
-
-                    "trigger": "axis",
-
-                    "axisPointer": {
-                        "type": "cross"
-                    },
-
-                    "formatter": JsCode("""
-                        function(params) {
-
-                            if (!params || params.length === 0) {
-                                return '';
-                            }
-
-                            const tempo = params[0].value[0];
-
-                            let resultado =
-                                '<b>Tempo: ' +
-                                Number(tempo).toFixed(2) +
-                                ' s</b><br/>';
-
-                            params.forEach(function(item) {
-
-                                if (
-                                    !item.value ||
-                                    item.value[1] == null
-                                ) {
-                                    return;
-                                }
-
-                                resultado += (
-                                    item.marker + ' ' +
-                                    item.seriesName + ': <b>' +
-                                    Number(item.value[1])
-                                        .toFixed(2)
-                                        .replace('.', ',') +
-                                    '</b><br/>'
-                                );
-
-                            });
-
-                            return resultado;
-                        }
-                    """).js_code
-
-                },
-
-                "legend": {
-
-                    "type": "scroll",
-
-                    "top": "11%",
-
-                    "left": "center",
-
-                    "data": nomes_legenda
-
-                },
-
-                "grid": {
-
-                    "left": "7%",
-
-                    "right": "7%",
-
-                    "bottom": "16%",
-
-                    "top": "21%",
-
-                    "containLabel": True
-
-                },
-
-                "xAxis": {
-
-                    "type": "value",
-
-                    "name": "Tempo (s)",
-
-                    "nameLocation": "middle",
-
-                    "nameGap": 30,
-
-                    "min": 0,
-
-                    "axisLabel": {
-                        "formatter": "{value} s"
-                    },
-
-                    "splitLine": {
-                        "show": True,
-                        "lineStyle": {
-                            "type": "dashed",
-                            "opacity": 0.4
-                        }
-                    }
-
-                },
-
-                "yAxis": [
-
-                    {
-
-                        "type": "value",
-
-                        "name": "Velocidade (km/h)",
-
-                        "nameLocation": "middle",
-
-                        "nameGap": 48,
-
-                        "position": "left",
-
-                        "min": 0,
-
-                        "scale": True,
-
-                        "axisLine": {
-                            "show": True,
-                            "lineStyle": {
-                                "color": "#0077bd"
-                            }
-                        },
-
-                        "axisLabel": {
-                            "formatter": "{value}"
-                        },
-
-                        "splitLine": {
-                            "show": True,
-                            "lineStyle": {
-                                "type": "dotted",
-                                "opacity": 0.4
-                            }
-                        }
-
-                    },
-
-                    {
-
-                        "type": "value",
-
-                        "name": nome_eixo(sufixo_variavel),
-
-                        "nameLocation": "middle",
-
-                        "nameGap": 55,
-
-                        "position": "right",
-
-                        "scale": True,
-
-                        "axisLine": {
-                            "show": True,
-                            "lineStyle": {
-                                "color": "#f05a24"
-                            }
-                        },
-
-                        "axisLabel": {
-                            "formatter": JsCode("""
-                                function(value) {
-                                    return Number(value)
-                                        .toFixed(1)
-                                        .replace('.', ',');
-                                }
-                            """).js_code
-                        },
-
-                        "splitLine": {
-                            "show": False
-                        }
-
-                    }
-
-                ],
-
-                "dataZoom": [
-
-                    {
-                        "type": "inside",
-                        "xAxisIndex": 0
-                    },
-
-                    {
-                        "type": "slider",
-                        "xAxisIndex": 0,
-                        "bottom": "2%"
-                    }
-
-                ],
-
-                "series": series
-
-            }
-
-            # ---------------------------------------------
-            # RENDERIZAÇÃO
-            # ---------------------------------------------
-
-            st_echarts(
-                options=opcoes,
-                height="470px",
-                key=chave_grafico
-            )
-
-        # =====================================================
-        # 6. RENDERIZAR OS DOIS GRÁFICOS
-        # =====================================================
-
-        st.markdown("#### Primeiro ensaio")
-
-        plotar_grafico_temporal(
-            dados_a,
-            arquivo_a.name,
-            variavel_direita,
-            f"temporal_grafico_a_{chave}"
-        )
-
-        st.markdown("#### Segundo ensaio")
-
-        plotar_grafico_temporal(
-            dados_b,
-            arquivo_b.name,
-            variavel_direita,
-            f"temporal_grafico_b_{chave}"
-        )
-
-    # =========================================================
-    # 4. GRÁFICOS DE PERCENTUAL E CAPACIDADE DOS MODOS
-    # =========================================================
-
-    def exibir_graficos_modos(arquivos, prefixo, chave):
-
-        modos = [
-            {
-                "nome": "Boost",
-                "percentual": "por_boost",
-                "condicao": "condicao_boo",
-                "capacidade": "Capacidade_boost",
-                "cor": COR_BOOST
-            },
-            {
-                "nome": "Neutro / Cargas auxiliares",
-                "percentual": "por_idle",
-                "condicao": "condicao_neu",
-                "capacidade": "Capacidade_auxiliares",
-                "cor": COR_NEUTRO
-            },
-            {
-                "nome": "Alternador",
-                "percentual": "por_alternador",
-                "condicao": "condicao_alt",
-                "capacidade": "Capacidade_alternador",
-                "cor": COR_ALTERNADOR
-            },
-            {
-                "nome": "Frenagem regenerativa",
-                "percentual": "por_frenagem",
-                "condicao": "condicao_fre",
-                "capacidade": "Capacidade_frenagem",
-                "cor": COR_REGEN
-            }
-        ]
-
-        def obter_escalar(dados, nome):
-
-            bruto = dados.get(nome)
-
-            if bruto is None:
-                return None
-
-            try:
-
-                valores = np.asarray(
-                    bruto,
-                    dtype=float
-                ).ravel()
-
-                valores = valores[
-                    np.isfinite(valores)
-                ]
-
-                if valores.size == 0:
-                    return None
-
-                return float(valores[0])
-
-            except (TypeError, ValueError):
-                return None
-
-        registros = []
-
-        # -----------------------------------------------------
-        # EXTRAÇÃO DOS INDICADORES DE CADA ARQUIVO
-        # -----------------------------------------------------
-
-        for arquivo in arquivos:
-
-            try:
-
-                arquivo.seek(0)
-
-                dados = carregar_arquivo_mat(arquivo)
-
-                if not dados:
-                    continue
-
-                registro = {
-                    "Arquivo": arquivo.name,
-                    "Percentuais": {},
-                    "Capacidades": {}
-                }
-
-                for modo in modos:
-
-                    nome_percentual = (
-                        f"{prefixo}{modo['percentual']}"
-                    )
-
-                    nome_condicao = (
-                        f"{prefixo}{modo['condicao']}"
-                    )
-
-                    nome_capacidade = (
-                        f"{prefixo}{modo['capacidade']}"
-                    )
-
-                    # -----------------------------------------
-                    # PERCENTUAL DO MODO
-                    # -----------------------------------------
-
-                    percentual = obter_escalar(
-                        dados,
-                        nome_percentual
-                    )
-
-                    # Se o percentual salvo não existir,
-                    # calcula pela quantidade de amostras da condição.
-                    if percentual is None:
-
-                        serie_condicao = dados.get(nome_condicao)
-
-                        if serie_condicao is not None:
-
-                            try:
-
-                                serie_condicao = np.asarray(
-                                    serie_condicao,
-                                    dtype=float
-                                ).ravel()
-
-                                validos = serie_condicao[
-                                    np.isfinite(serie_condicao)
-                                ]
-
-                                if validos.size > 0:
-
-                                    percentual = (
-                                        np.sum(validos > 0)
-                                        / validos.size
-                                    ) * 100
-
-                            except (TypeError, ValueError):
-                                percentual = None
-
-                    registro["Percentuais"][
-                        modo["nome"]
-                    ] = percentual
-
-                    # -----------------------------------------
-                    # CAPACIDADE DO MODO (Ah)
-                    # -----------------------------------------
-
-                    capacidade = obter_escalar(
-                        dados,
-                        nome_capacidade
-                    )
-
-                    registro["Capacidades"][
-                        modo["nome"]
-                    ] = capacidade
-
-                registros.append(registro)
-
-            except Exception as erro:
-
-                st.warning(
-                    f"Erro ao extrair indicadores de "
-                    f"{arquivo.name}: {erro}"
-                )
-
-        if not registros:
-            st.warning(
-                "Não foram encontrados indicadores de modos "
-                "operacionais nos arquivos selecionados."
-            )
-            return
-
-        nomes_arquivos = [
-            registro["Arquivo"]
-            for registro in registros
-        ]
-
-        # -----------------------------------------------------
-        # FUNÇÃO PARA MONTAR AS SÉRIES ECHARTS
-        # -----------------------------------------------------
-
-        def montar_series(tipo):
-
-            series = []
-
-            for modo in modos:
-
-                if tipo == "percentual":
-
-                    dados_serie = [
-                        registro["Percentuais"][modo["nome"]]
-                        for registro in registros
-                    ]
-
-                else:
-
-                    dados_serie = [
-                        registro["Capacidades"][modo["nome"]]
-                        for registro in registros
-                    ]
-
-                series.append({
-
-                    "name": modo["nome"],
-
-                    "type": "bar",
-
-                    "data": dados_serie,
-
-                    "barMaxWidth": 28,
-
-                    "itemStyle": {
-                        "color": modo["cor"]
-                    },
-
-                    "label": {
-
-                        "show": True,
-
-                        "position": "top",
-
-                        "formatter": JsCode("""
-                            function(params) {
-
-                                if (
-                                    params.value === null ||
-                                    params.value === undefined
-                                ) {
-                                    return '';
-                                }
-
-                                return Number(params.value)
-                                    .toFixed(2)
-                                    .replace('.', ',');
-                            }
-                        """).js_code,
-
-                        "fontSize": 9
-
-                    }
-
-                })
-
-            return series
-
-        # =====================================================
-        # 1. GRÁFICO DE PERCENTUAL DOS MODOS
-        # =====================================================
-
-        possui_percentuais = any(
-            valor is not None
-            for registro in registros
-            for valor in registro["Percentuais"].values()
-        )
-
-        if possui_percentuais:
-
-            st.subheader(
-                "Distribuição percentual dos modos operacionais"
-            )
-
-            opcoes_percentuais = {
-
-                "title": {
-
-                    "text": "Percentual por modo operacional",
-
-                    "subtext": "Comparação entre os arquivos analisados",
-
-                    "left": "center",
-
-                    "top": "2%",
-
-                    "textStyle": {
-                        "fontSize": 16
-                    }
-
-                },
-
-                "tooltip": {
-
-                    "trigger": "axis",
-
-                    "axisPointer": {
-                        "type": "shadow"
-                    },
-
-                    "valueFormatter": JsCode("""
-                        function(value) {
-
-                            if (value == null) {
-                                return 'N/D';
-                            }
-
-                            return Number(value)
-                                .toFixed(2)
-                                .replace('.', ',') + '%';
-                        }
-                    """).js_code
-
-                },
-
-                "legend": {
-
-                    "top": "13%",
-
-                    "data": [
-                        modo["nome"] for modo in modos
-                    ]
-
-                },
-
-                "grid": {
-
-                    "left": "8%",
-                    "right": "5%",
-                    "bottom": "25%",
-                    "top": "25%",
-                    "containLabel": True
-
-                },
-
-                "xAxis": {
-
-                    "type": "category",
-
-                    "data": nomes_arquivos,
-
-                    "axisLabel": {
-                        "rotate": 35,
-                        "interval": 0,
-                        "fontSize": 9
-                    },
-
-                    "splitLine": {
-                        "show": False
-                    }
-
-                },
-
-                "yAxis": {
-
-                    "type": "value",
-
-                    "name": "Participação (%)",
-
-                    "axisLabel": {
-                        "formatter": "{value}%"
-                    },
-
-                    "splitLine": {
-                        "show": False
-                    }
-
-                },
-
-                "series": montar_series("percentual")
-
-            }
-
-            st_echarts(
-                options=opcoes_percentuais,
-                height="500px",
-                key=f"comparacao_percentuais_modos_{chave}"
-            )
-
-        else:
-
-            st.warning(
-                "Não foram encontrados dados de percentual "
-                "dos modos operacionais."
-            )
-
-        # =====================================================
-        # 2. GRÁFICO DE CAPACIDADE DOS MODOS
-        # =====================================================
-
-        possui_capacidades = any(
-            valor is not None
-            for registro in registros
-            for valor in registro["Capacidades"].values()
-        )
-
-        if possui_capacidades:
-
-            st.divider()
-
-            st.subheader(
-                "Capacidade elétrica por modo operacional"
-            )
-
-            opcoes_capacidades = {
-
-                "title": {
-
-                    "text": "Capacidade por modo operacional",
-
-                    "subtext": "Comparação das capacidades dos arquivos analisados",
-
-                    "left": "center",
-
-                    "top": "2%",
-
-                    "textStyle": {
-                        "fontSize": 16
-                    }
-
-                },
-
-                "tooltip": {
-
-                    "trigger": "axis",
-
-                    "axisPointer": {
-                        "type": "shadow"
-                    },
-
-                    "valueFormatter": JsCode("""
-                        function(value) {
-
-                            if (value == null) {
-                                return 'N/D';
-                            }
-
-                            return Number(value)
-                                .toFixed(2)
-                                .replace('.', ',') + ' Ah';
-                        }
-                    """).js_code
-
-                },
-
-                "legend": {
-
-                    "top": "13%",
-
-                    "data": [
-                        modo["nome"] for modo in modos
-                    ]
-
-                },
-
-                "grid": {
-
-                    "left": "10%",
-                    "right": "5%",
-                    "bottom": "25%",
-                    "top": "25%",
-                    "containLabel": True
-
-                },
-
-                "xAxis": {
-
-                    "type": "category",
-
-                    "data": nomes_arquivos,
-
-                    "axisLabel": {
-                        "rotate": 35,
-                        "interval": 0,
-                        "fontSize": 9
-                    },
-
-                    "splitLine": {
-                        "show": False
-                    }
-
-                },
-
-                "yAxis": {
-
-                    "type": "value",
-
-                    "name": "Capacidade (Ah)",
-
-                    "axisLabel": {
-                        "formatter": "{value} Ah"
-                    },
-
-                    "splitLine": {
-                        "show": False
-                    }
-
-                },
-
-                "series": montar_series("capacidade")
-
-            }
-
-            st_echarts(
-                options=opcoes_capacidades,
-                height="500px",
-                key=f"comparacao_capacidades_modos_{chave}"
-            )
-
-        else:
-
-            st.warning(
-                "Não foram encontrados dados de capacidade "
-                "dos modos operacionais."
-            )
-
-        st.caption(
-            "Os percentuais e as capacidades são indicadores globais "
-            "extraídos dos arquivos MAT. Eles não são recalculados "
-            "pelo filtro de condição aplicado ao boxplot."
-        )
-
-    # =========================================================
-    # 4. EXIBIÇÃO DA COMPARAÇÃO
-    # =========================================================
-
-    def exibir_comparacao(
-        registros,
-        nome_grupo,
-        chave,
-        condicao_nome
-    ):
-
-        if not registros:
-
-            st.warning(
-                f"Não existem dados suficientes para a comparação "
-                f"de {nome_grupo} na condição selecionada."
-            )
-
-            return
-
-        df = pd.DataFrame(registros)
-
-        df = df.sort_values(
-            by=["Variável", "Arquivo"]
-        ).reset_index(drop=True)
-
-        quantidade_arquivos = df["Arquivo"].nunique()
-
-        st.caption(
-            f"{quantidade_arquivos} arquivo(s) processado(s) | "
-            f"{df['Variável'].nunique()} variável(is) encontrada(s) | "
-            f"Condição: {condicao_nome}"
-        )
-
-        # -----------------------------------------------------
-        # TABELA ESTATÍSTICA
-        # -----------------------------------------------------
-
-        st.subheader(
-            f"Resumo estatístico — {condicao_nome}"
-        )
-
-        st.dataframe(
-            df.style.format({
-                "Mínimo": "{:.2f}",
-                "Média": "{:.2f}",
-                "Máximo": "{:.2f}"
-            }),
-            use_container_width=True,
-            hide_index=True
-        )
-
-        # -----------------------------------------------------
-        # SELEÇÃO DA VARIÁVEL
-        # -----------------------------------------------------
-
-        st.divider()
-
-        st.subheader("Comparação dos intervalos")
-
-        variaveis = sorted(
-            df["Variável"].unique().tolist()
-        )
-
-        variavel_selecionada = st.selectbox(
-            "Selecione a variável para comparar:",
-            variaveis,
-            key=f"comparacao_variavel_{chave}"
-        )
-
-        df_grafico = df[
-            df["Variável"] == variavel_selecionada
-        ].reset_index(drop=True)
-
-        if df_grafico.empty:
-
-            st.warning(
-                "Não existem dados disponíveis para essa variável."
-            )
-
-            return
-
-        # -----------------------------------------------------
-        # DADOS DO GRÁFICO
-        # -----------------------------------------------------
-
-        nomes_arquivos = df_grafico[
-            "Arquivo"
-        ].tolist()
-
-        dados_grafico = []
-
-        for indice, linha in df_grafico.iterrows():
-
-            dados_grafico.append({
-
-                "name": str(linha["Arquivo"]),
-
-                "value": [
-                    int(indice),
-                    float(linha["Mínimo"]),
-                    float(linha["Máximo"]),
-                    float(linha["Média"]),
-                    int(linha["Amostras"])
-                ]
-
-            })
-
-        # -----------------------------------------------------
-        # MARGEM AUTOMÁTICA DO EIXO Y
-        # -----------------------------------------------------
-
-        valor_minimo_global = float(
-            df_grafico["Mínimo"].min()
-        )
-
-        valor_maximo_global = float(
-            df_grafico["Máximo"].max()
-        )
-
-        amplitude_global = (
-            valor_maximo_global - valor_minimo_global
-        )
-
-        margem = max(
-            amplitude_global * 0.15,
-            abs(valor_minimo_global) * 0.03,
-            abs(valor_maximo_global) * 0.03,
-            0.01
-        )
-
-        limite_inferior = valor_minimo_global - margem
-        limite_superior = valor_maximo_global + margem
-
-        # -----------------------------------------------------
-        # GRÁFICO DE INTERVALOS
-        # -----------------------------------------------------
-
-        opcoes_intervalos = {
-
-            "title": {
-
-                "text": f"Comparação de {variavel_selecionada}",
-
-                "subtext": (
-                    f"{nome_grupo} — {condicao_nome} | "
-                    "Mínimo, média e máximo"
-                ),
-
-                "left": "center",
-                "top": "2%",
-
-                "textStyle": {
-                    "fontSize": 17,
-                    "fontWeight": "bold"
-                },
-
-                "subtextStyle": {
-                    "fontSize": 11,
-                    "color": "#757575"
-                }
-            },
-
-            "tooltip": {
-
-                "trigger": "item",
-
-                "formatter": JsCode("""
-                    function(params) {
-
-                        const v = params.value;
-
-                        return (
-                            '<b>' + params.name + '</b>' +
-                            '<br>Mínimo: ' +
-                            Number(v[1]).toFixed(2).replace('.', ',') +
-                            '<br>Média: ' +
-                            Number(v[3]).toFixed(2).replace('.', ',') +
-                            '<br>Máximo: ' +
-                            Number(v[2]).toFixed(2).replace('.', ',') +
-                            '<br>Amostras: ' + v[4]
-                        );
-                    }
-                """).js_code
-            },
-
-            "grid": {
-
-                "left": "12%",
-                "right": "12%",
-                "bottom": "25%",
-                "top": "24%",
-                "containLabel": True
-            },
-
-            "xAxis": {
-
-                "type": "category",
-
-                "name": "Arquivo",
-
-                "data": nomes_arquivos,
-
-                "axisLabel": {
-                    "rotate": 35,
-                    "interval": 0,
-                    "fontSize": 9
-                },
-
-                "splitLine": {
-                    "show": False
-                }
-            },
-
-            "yAxis": {
-
-                "type": "value",
-
-                "name": variavel_selecionada,
-
-                "min": limite_inferior,
-                "max": limite_superior,
-
-                "axisLabel": {
-                    "formatter": JsCode("""
-                        function(value) {
-                            return Number(value).toFixed(2).replace('.', ',');
-                        }
-                    """).js_code
-                },
-
-                "splitLine": {
-                    "show": False
-                }
-            },
-
-            "series": [
-
-                {
-
-                    "name": "Intervalo e média",
-
-                    "type": "custom",
-
-                    "renderItem": JsCode("""
-                        function(params, api) {
-
-                            const indice = api.value(0);
-
-                            const minimo = api.value(1);
-                            const maximo = api.value(2);
-                            const media = api.value(3);
-
-                            // Coordenadas dos valores
-                            const pontoMin = api.coord([
-                                indice,
-                                minimo
-                            ]);
-
-                            const pontoMax = api.coord([
-                                indice,
-                                maximo
-                            ]);
-
-                            const pontoMedia = api.coord([
-                                indice,
-                                media
-                            ]);
-
-                            const x = pontoMedia[0];
-
-                            const yMin = pontoMin[1];
-                            const yMax = pontoMax[1];
-                            const yMedia = pontoMedia[1];
-
-                            const largura = 12;
-
-                            // Formatação decimal brasileira
-                            const formatar = function(valor) {
-                                return Number(valor)
-                                    .toFixed(2)
-                                    .replace('.', ',');
-                            };
-
-                            return {
-
-                                type: 'group',
-
-                                children: [
-
-                                    // =================================
-                                    // BARRA DO INTERVALO
-                                    // =================================
-
-                                    {
-                                        type: 'line',
-
-                                        shape: {
-                                            x1: x,
-                                            y1: yMin,
-                                            x2: x,
-                                            y2: yMax
-                                        },
-
-                                        style: {
-                                            stroke: '#4b7bec',
-                                            lineWidth: 5
-                                        }
-                                    },
-
-                                    // =================================
-                                    // LIMITE MÍNIMO
-                                    // =================================
-
-                                    {
-                                        type: 'line',
-
-                                        shape: {
-                                            x1: x - largura,
-                                            y1: yMin,
-                                            x2: x + largura,
-                                            y2: yMin
-                                        },
-
-                                        style: {
-                                            stroke: '#4b7bec',
-                                            lineWidth: 2
-                                        }
-                                    },
-
-                                    // =================================
-                                    // LIMITE MÁXIMO
-                                    // =================================
-
-                                    {
-                                        type: 'line',
-
-                                        shape: {
-                                            x1: x - largura,
-                                            y1: yMax,
-                                            x2: x + largura,
-                                            y2: yMax
-                                        },
-
-                                        style: {
-                                            stroke: '#4b7bec',
-                                            lineWidth: 2
-                                        }
-                                    },
-
-                                    // =================================
-                                    // MARCADOR DA MÉDIA
-                                    // =================================
-
-                                    {
-                                        type: 'circle',
-
-                                        shape: {
-                                            cx: x,
-                                            cy: yMedia,
-                                            r: 7
-                                        },
-
-                                        style: {
-                                            fill: '#f39200',
-                                            stroke: '#ffffff',
-                                            lineWidth: 1
-                                        }
-                                    },
-
-                                    // =================================
-                                    // RÓTULO DO MÁXIMO
-                                    // =================================
-
-                                    {
-                                        type: 'text',
-
-                                        style: {
-
-                                            x: x,
-                                            y: yMax - 10,
-
-                                            text: 'Máx: ' + formatar(maximo),
-
-                                            fill: '#4b7bec',
-
-                                            font: 'bold 11px sans-serif',
-
-                                            textAlign: 'center',
-
-                                            textVerticalAlign: 'bottom'
-                                        }
-                                    },
-
-                                    // =================================
-                                    // RÓTULO DO MÍNIMO
-                                    // =================================
-
-                                    {
-                                        type: 'text',
-
-                                        style: {
-
-                                            x: x,
-                                            y: yMin + 10,
-
-                                            text: 'Mín: ' + formatar(minimo),
-
-                                            fill: '#4b7bec',
-
-                                            font: 'bold 11px sans-serif',
-
-                                            textAlign: 'center',
-
-                                            textVerticalAlign: 'top'
-                                        }
-                                    },
-
-                                    // =================================
-                                    // RÓTULO DA MÉDIA
-                                    // =================================
-
-                                    {
-                                        type: 'text',
-
-                                        style: {
-
-                                            x: x + 12,
-                                            y: yMedia,
-
-                                            text: 'Média: ' + formatar(media),
-
-                                            fill: '#f39200',
-
-                                            font: 'bold 11px sans-serif',
-
-                                            textAlign: 'left',
-
-                                            textVerticalAlign: 'middle'
-                                        }
-                                    }
-
-                                ]
-                            };
-                        }
-                    """).js_code,
-
-                    "encode": {
-                        "x": 0,
-                        "y": [1, 2, 3]
-                    },
-
-                    "data": dados_grafico
-
-                }
-
-            ]
-
-        }
-
-        st_echarts(
-            options=opcoes_intervalos,
-            height="600px",
-            key=f"comparacao_intervalos_{chave}"
-        )
-    # =========================================================
-    # 5. COMPARAÇÃO FTP
-    # =========================================================
-
-    if arquivos_ftp:
-
-        with st.expander(
-            "Comparação dos ensaios FTP",
-            expanded=True
-        ):
-
-            condicao_ftp = st.selectbox(
-                "Condição operacional — FTP:",
-
-                list(condicoes.keys()),
-
-                key="comparacao_condicao_ftp"
-            )
-
-            registros_ftp = processar_arquivos(
-                arquivos_ftp,
-
-                prefixo="f",
-
-                condicao_selecionada=condicoes[condicao_ftp]
-            )
-
-            exibir_comparacao(
-                registros_ftp,
-
-                nome_grupo="FTP",
-
-                chave="ftp",
-
-                condicao_nome=condicao_ftp
-            )
-
-            exibir_graficos_modos(
-            arquivos_ftp,
-            prefixo="f",
-            chave="ftp"
-            )
-
-            exibir_comparacao_temporal(
-            arquivos_ftp,
-            prefixo="f",
-            chave="ftp"
-            )
-
-    # =========================================================
-    # 6. COMPARAÇÃO HIGHWAY
-    # =========================================================
-
-    if arquivos_hgw:
-
-        with st.expander(
-            "Comparação dos ensaios Highway",
-            expanded=True
-        ):
-
-            condicao_hgw = st.selectbox(
-                "Condição operacional — Highway:",
-
-                list(condicoes.keys()),
-
-                key="comparacao_condicao_highway"
-            )
-
-            registros_hgw = processar_arquivos(
-                arquivos_hgw,
-
-                prefixo="h",
-
-                condicao_selecionada=condicoes[condicao_hgw]
-            )
-
-            exibir_comparacao(
-                registros_hgw,
-
-                nome_grupo="Highway",
-
-                chave="highway",
-
-                condicao_nome=condicao_hgw
-            )
-
-            exibir_graficos_modos(
-            arquivos_hgw,
-            prefixo="h",
-            chave="highway"
-            )
-
-            exibir_comparacao_temporal(
-                arquivos_hgw,
-                prefixo="h",
-                chave="highway"
-            )
-
-    # =========================================================
-    # 7. MENSAGEM INICIAL
-    # =========================================================
-
-    if not arquivos_ftp and not arquivos_hgw:
-
-        st.info(
-            "Selecione pelo menos um arquivo FTP ou Highway "
-            "para iniciar a comparação."
-        )
-
-
+    if ftp:
+        with st.expander("Comparação dos ensaios FTP", expanded=True):
+            bloco_comparacao("FTP", ftp, "f", "ftp")
+    if hgw:
+        with st.expander("Comparação dos ensaios Highway", expanded=True):
+            bloco_comparacao("Highway", hgw, "h", "highway")
+    if not ftp and not hgw:
+        st.info("Selecione pelo menos um arquivo FTP ou Highway para iniciar a comparação.")
 
 
 # =======================================================================
-# 8. APLICAÇÃO PRINCIPAL
+# 13. APLICAÇÃO PRINCIPAL
 # =======================================================================
 def main_app():
     with st.sidebar:
-        st.markdown("<h2 style='color: #ce4545; text-align: center;'>- LOBOS ELETRIFICADOS -</h2>", unsafe_allow_html=True)
-
-        # Menu de navegação
-        pagina_selecionada = st.sidebar.radio(
-            "Navegação",
-            [
-                "📈 Telemetria",
-                "📊 Estatística",
-                "📉 Análise",
-                "⚖️ Comparação"
-            ]
-        )
+        st.markdown("<h2 style='color:#ce4545; text-align:center;'>- LOBOS ELETRIFICADOS -</h2>",
+                    unsafe_allow_html=True)
+        pagina = st.radio("Navegação", ["📈 Telemetria", "📊 Estatística", "📉 Análise",
+                                        "🧩 Eventos & KPIs", "🔗 Correlações", "⚖️ Comparação"])
         st.markdown("---")
         st.markdown("### 📂 Upload de Arquivos .mat")
         arquivo_1 = st.file_uploader("Arquivo FTP (.mat)", type=["mat"], key="file1")
         arquivo_2 = st.file_uploader("Arquivo Highway (.mat)", type=["mat"], key="file2")
-
         st.markdown("---")
-        st.info(f"⏱️ **Passo de Amostragem:** Fixo em `{DT_AMOSTRAGEM} s`")
-
+        st.markdown("### 🎛️ Filtros e exibição")
+        st.slider("Faixa de velocidade (km/h)", 0, 200, (0, 200), key="filtro_vel",
+                  help="Aplicado às páginas Estatística, Correlações. O limite máximo de 200 significa sem limite superior.")
+        st.toggle("Gráficos em tema escuro", key="tema_escuro")
+        st.info(f"⏱️ **Passo de Amostragem:** fixo em `{DT_AMOSTRAGEM} s`")
         if st.button("🚪 Sair", use_container_width=True):
             st.session_state["authenticated"] = False
             st.rerun()
 
-    # -------------------------------------------------------------------
-    # MÓDULO 1: TELEMETRIA
-    # -------------------------------------------------------------------
-    if pagina_selecionada == "📈 Telemetria":
+    if pagina == "📈 Telemetria":
         st.title("Painel de Telemetria Multivariável")
-
-        tab_mat1, tab_mat2 = st.tabs(["📁 Arquivo .MAT 1", "📁 Arquivo .MAT 2"])
-
-        with tab_mat1:
+        tab1, tab2 = st.tabs(["📁 Arquivo .MAT 1 (FTP)", "📁 Arquivo .MAT 2 (Highway)"])
+        with tab1:
             if arquivo_1:
-                vars_1 = carregar_arquivo_mat(arquivo_1)
-                chaves = [
-                var for var in VARIAVEIS_PLOTAVEIS
-                if var in vars_1
-                ]
-                if len(chaves) >= 2:
-                    col1, col2 = st.columns(2)
-                    var_esq = col1.selectbox("Variável Esquerda (Área):", chaves, key="v1_left")
-                    var_dir = col2.selectbox("Variável Direita (Linha):", chaves, index=1, key="v1_right")
-
-                    dados_esq = [[round(i * DT_AMOSTRAGEM, 2), float(v)] for i, v in enumerate(vars_1[var_esq])]
-                    dados_dir = [[round(i * DT_AMOSTRAGEM, 2), float(v)] for i, v in enumerate(vars_1[var_dir])]
-
-                    plotar_grafico_duplo_eixo(
-                        serie_esq=dados_esq,
-                        serie_dir=dados_dir,
-                        nome_eixo_esq=var_esq,
-                        nome_eixo_dir=var_dir,
-                        titulo=f"{arquivo_1.name} — {var_esq} vs {var_dir}",
-                        key="grafico_arq1"
-                    )
-                else:
-                    st.warning("O arquivo precisa conter ao menos 2 variáveis numéricas.")
-                plotar_kpis_ciclo(vars_1, prefixo="f", nome_ciclo="ITEMM FTP")  
+                painel_telemetria(arquivo_1, "f", "ITEMM FTP", "tel1")
             else:
                 st.info("Envie o Arquivo 1 (.mat) na barra lateral para carregar a telemetria.")
-
-        with tab_mat2:
+        with tab2:
             if arquivo_2:
-                
-                vars_2 = carregar_arquivo_mat(arquivo_2)
-                chaves2 = [
-                var for var in VARIAVEIS_PLOTAVEIS
-                if var in vars_2
-                ]
-                if len(chaves2) >= 2:
-                    col3, col4 = st.columns(2)
-                    var_esq2 = col3.selectbox("Variável Esquerda (Área):", chaves2, key="v2_left")
-                    var_dir2 = col4.selectbox("Variável Direita (Linha):", chaves2, index=1, key="v2_right")
-
-                    dados_esq2 = [[round(i * DT_AMOSTRAGEM, 2), float(v)] for i, v in enumerate(vars_2[var_esq2])]
-                    dados_dir2 = [[round(i * DT_AMOSTRAGEM, 2), float(v)] for i, v in enumerate(vars_2[var_dir2])]
-
-                    plotar_grafico_duplo_eixo(
-                        serie_esq=dados_esq2,
-                        serie_dir=dados_dir2,
-                        nome_eixo_esq=var_esq2,
-                        nome_eixo_dir=var_dir2,
-                        titulo=f"{arquivo_2.name} — {var_esq2} vs {var_dir2}",
-                        key="grafico_arq2"
-                    )
-                else:
-                    st.warning("O arquivo precisa conter ao menos 2 variáveis numéricas.")
-                plotar_kpis_ciclo(vars_2, prefixo="h", nome_ciclo="ITEMM HGW")  
+                painel_telemetria(arquivo_2, "h", "ITEMM HGW", "tel2")
             else:
                 st.info("Envie o Arquivo 2 (.mat) na barra lateral para carregar a telemetria.")
-    # -------------------------------------------------------------------
-    # MÓDULO 2: ESTATÍSTICA (PIZZAS)
-    # -------------------------------------------------------------------
-    elif pagina_selecionada == "📊 Estatística":
+
+    elif pagina == "📊 Estatística":
         st.title("Estatística de Condições Operacionais")
         st.markdown("Comparativo percentual de permanência em cada condição de operação.")
-
-        col_arq1, col_arq2 = st.columns(2)
-
-        with col_arq1:
-            st.subheader("📁 Arquivo 1")
-            if arquivo_1:
-                vars_1 = carregar_arquivo_mat(arquivo_1)
-                condicoes_1 = extrair_condicoes_automaticamente(vars_1)
-                if condicoes_1:
-                    plotar_pizza_condicoes(condicoes_1, titulo=f"Condições — {arquivo_1.name}", key="grafico_pizza_arq1")
+        col1, col2 = st.columns(2)
+        for col, arq, pref, num in ((col1, arquivo_1, "f", 1), (col2, arquivo_2, "h", 2)):
+            with col:
+                st.subheader(f"📁 Arquivo {num}")
+                if arq:
+                    itens = contagem_condicoes(carregar_arquivo_mat(arq), pref)
+                    if itens:
+                        plotar_pizza_condicoes(itens, f"Condições — {arq.name}", f"grafico_pizza_arq{num}")
+                    else:
+                        st.warning(f"Nenhuma variável de condição foi identificada no Arquivo {num}.")
                 else:
-                    st.warning("Nenhuma variável de condição foi identificada no Arquivo 1.")
-            else:
-                st.info("Faça o upload do Arquivo 1 na barra lateral.")
-
-        with col_arq2:
-            st.subheader("📁 Arquivo 2")
-            if arquivo_2:
-                vars_2 = carregar_arquivo_mat(arquivo_2)
-                condicoes_2 = extrair_condicoes_automaticamente(vars_2)
-                if condicoes_2:
-                    plotar_pizza_condicoes(condicoes_2, titulo=f"Condições — {arquivo_2.name}", key="grafico_pizza_arq2")
-                else:
-                    st.warning("Nenhuma variável de condição foi identificada no Arquivo 2.")
-            else:
-                st.info("Faça o upload do Arquivo 2 na barra lateral.")
-
+                    st.info(f"Faça o upload do Arquivo {num} na barra lateral.")
         st.divider()
+        renderizar_analise_estatistica(arquivo_1, arquivo_2)
 
-        renderizar_analise_estatistica(
-            arquivo_1,
-            arquivo_2
-        )
+    elif pagina == "📉 Análise":
+        pagina_analise(arquivo_1, arquivo_2)
 
-    # -------------------------------------------------------------------
-    # MÓDULO 3: ANÁLISE ITEMM
-    # -------------------------------------------------------------------
-    elif pagina_selecionada == "📉 Análise":
+    elif pagina == "🧩 Eventos & KPIs":
+        pagina_eventos(arquivo_1, arquivo_2)
 
-        st.title("Análise de Condições Operacionais — ITEMM")
+    elif pagina == "🔗 Correlações":
+        pagina_correlacoes(arquivo_1, arquivo_2)
 
-        st.markdown(
-            "Análise dos resultados obtidos nos ensaios ITEMM, "
-            "considerando os ciclos FTP e Highway."
-        )
-
-        if arquivo_1 and arquivo_2:
-
-            # Carregar arquivos MAT
-            vars_ftp = carregar_arquivo_mat(arquivo_1)
-            vars_hgw = carregar_arquivo_mat(arquivo_2)
-
-            nome_ftp = arquivo_1.name
-            nome_hgw = arquivo_2.name
-
-            titulo_arquivos = (
-                f"FTP: {nome_ftp} | HIGHWAY: {nome_hgw}"
-            )
-
-            # ---------------------------------------------------------
-            # EMISSÕES E TEMPOS DE START-STOP / CUT-OFF
-            # ---------------------------------------------------------
-            st.divider()
-
-            st.markdown("### 1. Análise de Emissão de CO2 e Start-Stop")
-
-            plotar_emissoes_e_tempos(
-                vars_ftp,
-                vars_hgw,
-                arquivo_1.name,
-                arquivo_2.name
-            )
-
-            st.divider()
-
-            # Variáveis de distribuição percentual
-            variaveis_percentuais_ftp = [
-                "fpor_boost",
-                "fpor_idle",
-                "fpor_alternador",
-                "fpor_frenagem"
-            ]
-
-            variaveis_percentuais_hgw = [
-                "hpor_boost",
-                "hpor_idle",
-                "hpor_alternador",
-                "hpor_frenagem"
-            ]
-
-            # Variáveis de capacidade em Ah
-            variaveis_capacidade_ftp = [
-                "fCapacidade_auxiliares",
-                "fCapacidade_boost",
-                "fCapacidade_frenagem",
-                "fCapacidade_alternador"
-            ]
-
-            variaveis_capacidade_hgw = [
-                "hCapacidade_auxiliares",
-                "hCapacidade_boost",
-                "hCapacidade_frenagem",
-                "hCapacidade_alternador"
-            ]
-
-            # Verificar variáveis ausentes
-            faltantes_ftp = [
-                nome for nome in (
-                    variaveis_percentuais_ftp +
-                    variaveis_capacidade_ftp
-                )
-                if nome not in vars_ftp
-            ]
-
-            faltantes_hgw = [
-                nome for nome in (
-                    variaveis_percentuais_hgw +
-                    variaveis_capacidade_hgw
-                )
-                if nome not in vars_hgw
-            ]
-
-            if faltantes_ftp or faltantes_hgw:
-
-                if faltantes_ftp:
-                    st.error(
-                        "O arquivo FTP não contém estas variáveis: "
-                        + ", ".join(faltantes_ftp)
-                    )
-
-                if faltantes_hgw:
-                    st.error(
-                        "O arquivo Highway não contém estas variáveis: "
-                        + ", ".join(faltantes_hgw)
-                    )
-
-            else:
-
-                # =======================================================
-                # 1. DISTRIBUIÇÃO PERCENTUAL POR CONDIÇÃO
-                # =======================================================
-
-                ciclos_horizontais = [
-                    "ITEMM HGW",
-                    "ITEMM FTP"
-                ]
-
-                dados_horizontais = {
-
-                    "Boost": [
-                        obter_escalar_mat(vars_hgw, "hpor_boost"),
-                        obter_escalar_mat(vars_ftp, "fpor_boost")
-                    ],
-
-                    "Neutro": [
-                        obter_escalar_mat(vars_hgw, "hpor_idle"),
-                        obter_escalar_mat(vars_ftp, "fpor_idle")
-                    ],
-
-                    "Alternador": [
-                        obter_escalar_mat(vars_hgw, "hpor_alternador"),
-                        obter_escalar_mat(vars_ftp, "fpor_alternador")
-                    ],
-
-                    "Frenagem": [
-                        obter_escalar_mat(vars_hgw, "hpor_frenagem"),
-                        obter_escalar_mat(vars_ftp, "fpor_frenagem")
-                    ]
-
-                }
-
-                st.markdown("### 3. Proporção das Condições por Ciclo (%) ")
-
-                plotar_barras_horizontais_condicoes(
-                    ciclos_horizontais,
-                    dados_horizontais
-                )
-
-                st.markdown("---")
-
-                # =======================================================
-                # 2. BALANÇO DE CARGA POR MODO
-                # =======================================================
-
-                ciclos_balanco = [
-                    "ITEMM FTP",
-                    "ITEMM HGW"
-                ]
-
-                dados_balanco = {
-
-                    "Cargas Auxiliares": [
-                        obter_escalar_mat(
-                            vars_ftp,
-                            "fCapacidade_auxiliares"
-                        ),
-                        obter_escalar_mat(
-                            vars_hgw,
-                            "hCapacidade_auxiliares"
-                        )
-                    ],
-
-                    "Boost": [
-                        obter_escalar_mat(
-                            vars_ftp,
-                            "fCapacidade_boost"
-                        ),
-                        obter_escalar_mat(
-                            vars_hgw,
-                            "hCapacidade_boost"
-                        )
-                    ],
-
-                    "Frenagem": [
-                        obter_escalar_mat(
-                            vars_ftp,
-                            "fCapacidade_frenagem"
-                        ),
-                        obter_escalar_mat(
-                            vars_hgw,
-                            "hCapacidade_frenagem"
-                        )
-                    ],
-
-                    "Alternador": [
-                        obter_escalar_mat(
-                            vars_ftp,
-                            "fCapacidade_alternador"
-                        ),
-                        obter_escalar_mat(
-                            vars_hgw,
-                            "hCapacidade_alternador"
-                        )
-                    ]
-
-                }
-
-                st.markdown(
-                    "### 4. Balanço de Carga por Modo (Ah)"
-                )
-
-                plotar_balanco_carga_positivo_negativo(
-                    ciclos_balanco,
-                    dados_balanco
-                )
-
-        else:
-
-            st.info(
-                "Envie os dois arquivos MAT: o arquivo com os dados FTP "
-                "e o arquivo com os dados Highway."
-            )
-
-
-    # -------------------------------------------------------------------
-    # MÓDULO 4: COMPARAÇÃO
-    # -------------------------------------------------------------------
-    elif pagina_selecionada == "⚖️ Comparação":
-    
+    elif pagina == "⚖️ Comparação":
         renderizar_comparacao_arquivos()
+
+
 # =======================================================================
-# 9. CONTROLE DE FLUXO
+# 14. CONTROLE DE FLUXO
 # =======================================================================
-if st.session_state["authenticated"]:
-    main_app()
-else:
-    check_login()
+if __name__ == "__main__":
+    if "authenticated" not in st.session_state:
+        st.session_state["authenticated"] = False
+    if st.session_state["authenticated"]:
+        main_app()
+    else:
+        check_login()
