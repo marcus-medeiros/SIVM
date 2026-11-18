@@ -890,7 +890,7 @@ def tabela_eventos(dados, prefixo) -> pd.DataFrame:
     """Uma linha por ocorrência contínua de cada modo (classificação exclusiva)."""
     vel = get_serie(dados, f"{prefixo}Speed_com")
     corr = get_serie(dados, f"{prefixo}CorrenteFiltro")
-    thr = get_serie(dados, f"{prefixo}Throttle_com")
+    ac1 = get_serie(dados, f"{prefixo}TensaoAC1_norm")
     soc = soc_percentual(get_serie(dados, f"{prefixo}SOC_calc"))
     volt = get_serie(dados, f"{prefixo}TensaoChumbo_com")
     ref = vel if vel is not None else corr
@@ -926,7 +926,7 @@ def tabela_eventos(dados, prefixo) -> pd.DataFrame:
                 "Vel. inicial (km/h)": float(v_ini),
                 "Vel. final (km/h)": float(v_fim),
                 "Vel. média (km/h)": agg(vel, i, f, np.mean),
-                "Throttle médio (%)": agg(thr, i, f, np.mean),
+                "Tensão AC1 média": agg(ac1, i, f, np.mean),
                 "Tensão média (V)": agg(volt, i, f, np.mean),
                 "Distância (km)": float(dist),
                 "SOC inicial (%)": soc_ini,
@@ -1127,10 +1127,10 @@ def pagina_eventos(arquivo_1, arquivo_2):
     st.markdown("#### Possíveis ineficiências da estratégia")
     i1, i2, i3 = st.columns(3)
     lim_v = i1.number_input("Boost abaixo de (km/h)", 0.0, 100.0, 20.0, 1.0, key=f"ev_limv_{pref}")
-    lim_t = i2.number_input("Alternador com pedal acima de (%)", 0.0, 100.0, 60.0, 5.0, key=f"ev_limt_{pref}")
+    lim_ac1 = i2.number_input("Alternador com tensão AC1 acima de", value=0.0, step=0.01, key=f"ev_limac1_{pref}")
     lim_d = i3.number_input("Pulsos curtos abaixo de (s)", 0.1, 10.0, 1.0, 0.1, key=f"ev_limd_{pref}")
     flag_boost = df[(df["Modo"] == "Boost") & (df["Vel. média (km/h)"] < lim_v)]
-    flag_alt = df[(df["Modo"] == "Alternador") & (df["Throttle médio (%)"] > lim_t)]
+    flag_alt = df[(df["Modo"] == "Alternador") & (df["Tensão AC1 média"] > lim_ac1)]
     flag_curto = df[(df["Duração (s)"] < lim_d) & (df["Modo"].isin(["Boost", "Alternador"]))]
     f1, f2, f3 = st.columns(3)
     f1.metric("Boost em baixa velocidade", len(flag_boost))
