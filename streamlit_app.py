@@ -363,7 +363,6 @@ def ciclos_carregados(arquivo_1, arquivo_2) -> list:
 def _igual(a: str, b: str) -> bool:
     return hmac.compare_digest(a.encode("utf-8"), b.encode("utf-8"))
 
-
 def check_login():
     st.markdown("""
         <style>
@@ -1339,37 +1338,50 @@ def renderizar_analise_estatistica(arquivo_1, arquivo_2):
     
     for m in MODOS:
         (v,) = extrair(dados, prefixo, [f"{prefixo}{suf}"], m["cod"])
+        v = v[np.isfinite(v)]
         if len(v) >= 5:
-            i = len(nomes_box)
-            p = np.percentile(v, [10, 25, 50, 75, 90])
-            caixas.append([round(float(x), 3) for x in p])
-            nomes_box.append(m["curto"])
+            minimo, q1, mediana, q3, maximo = np.percentile(v, [0, 25, 50, 75, 100])
+            nome = m["curto"]
+            caixas.append([float(minimo), float(q1), float(mediana), float(q3), float(maximo)])
+            nomes_box.append(nome)
             cores_box.append(m["cor"])
-            min_box.append([i, float(np.min(v))])
-            max_box.append([i, float(np.max(v))])
-            media_box.append([i, float(np.mean(v))])
+            min_box.append([nome, float(minimo)])
+            max_box.append([nome, float(maximo)])
+            media_box.append([nome, float(np.mean(v))])
     
     if caixas:
+        estilo_label = {"show": True, "fontSize": 9, "fontWeight": "bold",
+                        "backgroundColor": "rgba(255,255,255,0.9)", "padding": [2, 4],
+                        "borderRadius": 3}
+    
         grafico({
             "title": {"text": f"{nome_var} por modo",
-                      "subtext": "Caixa: P25–P75 | hastes: P10–P90 | pontos: mínimo, máximo e média",
-                      "left": "center", "subtextStyle": {"fontSize": 11, "color": "#777"}},
+                      "subtext": "Hastes: mínimo–máximo | caixa: P25–P75 | linha: mediana | ponto: média",
+                      "left": "center", "textStyle": {"fontSize": 14},
+                      "subtextStyle": {"fontSize": 10, "color": "#777"}},
             "tooltip": {"trigger": "item"},
-            "grid": {"left": "8%", "right": "5%", "bottom": "10%", "top": "22%", "containLabel": True},
-            "xAxis": {"type": "category", "data": nomes_box},
-            "yAxis": {"type": "value", "name": nome_var, "scale": True, "splitLine": {"show": False}},
+            "grid": {"left": "10%", "right": "9%", "bottom": "12%", "top": "23%", "containLabel": True},
+            "xAxis": {"type": "category", "data": nomes_box,
+                      "axisLabel": {"fontSize": 10, "interval": 0}},
+            "yAxis": {"type": "value", "name": nome_var, "scale": True,
+                      "axisLabel": {"fontSize": 10}, "nameTextStyle": {"fontSize": 11},
+                      "splitLine": {"show": False}},
             "series": [
-                {"type": "boxplot", "data": [{"value": c, "itemStyle": {"borderColor": cor, "color": cor + "55"}}
-                                             for c, cor in zip(caixas, cores_box)]},
-                {"name": "Mínimo", "type": "scatter", "data": min_box, "symbolSize": 7,
-                 "itemStyle": {"color": COR_VEL}, "label": {"show": True, "position": "bottom", "fontSize": 9,
-                 "formatter": js("function(p){return 'Mín: ' + Number(p.value[1]).toFixed(2).replace('.', ',');}")}, "z": 10},
-                {"name": "Máximo", "type": "scatter", "data": max_box, "symbolSize": 7,
-                 "itemStyle": {"color": COR_REGEN}, "label": {"show": True, "position": "top", "fontSize": 9,
-                 "formatter": js("function(p){return 'Máx: ' + Number(p.value[1]).toFixed(2).replace('.', ',');}")}, "z": 10},
-                {"name": "Média", "type": "scatter", "data": media_box, "symbolSize": 7,
-                 "itemStyle": {"color": COR_ALTERNADOR}, "label": {"show": True, "position": "right", "fontSize": 9,
-                 "formatter": js("function(p){return 'Média: ' + Number(p.value[1]).toFixed(2).replace('.', ',');}")}, "z": 10},
+                {"name": "Distribuição", "type": "boxplot",
+                 "data": [{"value": c, "itemStyle": {"borderColor": cor, "color": cor + "55"}}
+                          for c, cor in zip(caixas, cores_box)]},
+                {"name": "Mínimo", "type": "scatter", "data": min_box, "symbolSize": 6,
+                 "itemStyle": {"color": COR_VEL},
+                 "label": {**estilo_label, "position": "bottom", "color": COR_VEL,
+                           "formatter": js("function(p){return 'Mín: ' + Number(p.value[1]).toFixed(2).replace('.', ',');}")}, "z": 10},
+                {"name": "Máximo", "type": "scatter", "data": max_box, "symbolSize": 6,
+                 "itemStyle": {"color": COR_REGEN},
+                 "label": {**estilo_label, "position": "top", "color": COR_REGEN,
+                           "formatter": js("function(p){return 'Máx: ' + Number(p.value[1]).toFixed(2).replace('.', ',');}")}, "z": 10},
+                {"name": "Média", "type": "scatter", "data": media_box, "symbolSize": 8,
+                 "itemStyle": {"color": COR_ALTERNADOR, "borderColor": "#fff"},
+                 "label": {**estilo_label, "position": "right", "color": COR_ALTERNADOR,
+                           "formatter": js("function(p){return 'Média: ' + Number(p.value[1]).toFixed(2).replace('.', ',');}")}, "z": 11},
             ],
         }, "450px", f"estat_box_{prefixo}")
     else:
