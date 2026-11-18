@@ -1,20 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-SIVM - Telemetria, Estatística & Análise (MHEV)
-
-Módulos:
-  📈 Telemetria      KPIs, dois eixos livres, velocidade × variável × modos (faixa de modos,
-                     sombreado, linha colorida), Ah acumulado por modo
-  📊 Estatística     pizzas, estatísticas, histograma, boxplot por modo, heatmaps de densidade
-  📉 Análise         emissões, start-stop, proporção por condição, balanço de carga
-  🧩 Eventos & KPIs  segmentação por evento, transições, eficiência de regeneração,
-                     ineficiências, KPIs avançados, exportação CSV/Excel
-  🔗 Correlações     matriz de correlação e dispersão colorida por modo
-  ⚖️ Comparação      estatísticas, boxplot, Δ% vs referência, radar, tendência por data,
-                     modos, comparação temporal (separada/sobreposta, tempo/distância)
-
-Convenção de nomes dos arquivos: "AGM - L2 - 23092026 - FTP.mat" (bateria - data ddmmaaaa - ciclo)
-"""
 import hmac
 import io
 import json
@@ -575,8 +559,12 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
     sombra = estilo in (ESTILOS[0], ESTILOS[2])
     colorida = estilo == ESTILOS[3]
 
+    #                     
     legenda = ["Velocidade", rotulo_var(sufixo_dir)]
     series = []
+    passo = passo_decimacao(len(x))
+    sl = slice(None, None, passo)
+    
     for k, m in enumerate(MODOS, start=1):
         if k not in modos_sel:
             continue
@@ -585,26 +573,26 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
             continue
         legenda.append(m["nome"])
         base = {"name": m["nome"], "type": "line", "data": [], "symbol": "none",
-                "lineStyle": {"color": m["cor"], "width": 3}, "itemStyle": {"color": m["cor"]}}
+                "lineStyle": {"color": m["cor"], "width": 3},
+                "itemStyle": {"color": m["cor"]}}
         if sombra:
-            series.append({**base, "xAxisIndex": 0, "yAxisIndex": 0,
-                           "markArea": {"silent": True, "itemStyle": {"color": m["sombra"], "opacity": 0.25},
-                                        "data": inter}})
+            vel_sombra = np.where(modos[sl] == k, vel[sl], np.nan)
+            series.append({
+                "name": m["nome"], "type": "line", "xAxisIndex": 0, "yAxisIndex": 0,
+                "data": to_pts(x[sl], vel_sombra), "showSymbol": False,
+                "connectNulls": False, "lineStyle": {"opacity": 0},
+                "areaStyle": {"color": m["cor"], "opacity": 0.25},
+                "silent": True, "tooltip": {"show": False}, "z": 1,
+            })
         if faixa:
             series.append({**base, "xAxisIndex": 1, "yAxisIndex": 1,
                            "markArea": {"silent": True, "itemStyle": {"color": m["cor"], "opacity": 0.92},
                                         "data": inter}})
-
-    passo = passo_decimacao(len(x))
-    sl = slice(None, None, passo)
     idx_vel = len(series)
     serie_vel = {
         "name": "Velocidade", "type": "line", "xAxisIndex": 0, "yAxisIndex": 0,
         "data": to_pts(x[sl], vel[sl], modos[sl]), "showSymbol": False, "z": 5,
         "lineStyle": {"color": COR_VEL, "width": 2.5}, "itemStyle": {"color": COR_VEL},
-        "areaStyle": {"color": {"type": "linear", "x": 0, "y": 0, "x2": 0, "y2": 1,
-                                "colorStops": [{"offset": 0, "color": "rgba(0,119,189,0.15)"},
-                                               {"offset": 1, "color": "rgba(0,119,189,0.02)"}]}},
         "markPoint": {
             "symbol": "pin", "symbolSize": 52,
             "label": {"show": True, "position": "inside", "fontSize": 9,
