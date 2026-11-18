@@ -589,7 +589,7 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
                 "lineStyle": {"color": m["cor"], "width": 3}, "itemStyle": {"color": m["cor"]}}
         if sombra:
             series.append({**base, "xAxisIndex": 0, "yAxisIndex": 0,
-                           "markArea": {"silent": True, "itemStyle": {"color": m["sombra"], "opacity": 0.1},
+                           "markArea": {"silent": True, "itemStyle": {"color": m["sombra"], "opacity": 0.25},
                                         "data": inter}})
         if faixa:
             series.append({**base, "xAxisIndex": 1, "yAxisIndex": 1,
