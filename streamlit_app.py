@@ -606,7 +606,13 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
         "areaStyle": {"color": {"type": "linear", "x": 0, "y": 0, "x2": 0, "y2": 1,
                                 "colorStops": [{"offset": 0, "color": "rgba(0,119,189,0.15)"},
                                                {"offset": 1, "color": "rgba(0,119,189,0.02)"}]}},
-        "markPoint": {"symbolSize": 42, "data": [{"type": "max", "name": "Máx"}]},
+        "markPoint": {
+            "symbol": "pin", "symbolSize": 52,
+            "label": {"show": True, "position": "inside", "fontSize": 9,
+                      "fontWeight": "bold", "color": "#fff",
+                      "formatter": js("function(p){ return Number(p.value).toFixed(1).replace('.', ','); }")},
+            "data": [{"type": "max", "name": "Máx"}]
+        },
     }
     if fases and por_tempo:
         pts = [{"xAxis": float(t), "name": nome} for nome, t in fases if x[0] <= t <= x[-1]]
@@ -619,7 +625,13 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
         "name": rotulo_var(sufixo_dir), "type": "line", "xAxisIndex": 0, "yAxisIndex": 1,
         "data": to_pts(x[sl], dire[sl]), "showSymbol": False, "z": 6,
         "lineStyle": {"color": COR_VAR, "width": 2}, "itemStyle": {"color": COR_VAR},
-        "markPoint": {"symbolSize": 42, "data": [{"type": "max", "name": "Máx"}, {"type": "min", "name": "Mín"}]},
+        "markPoint": {
+            "symbol": "pin", "symbolSize": 52,
+            "label": {"show": True, "position": "inside", "fontSize": 9,
+                      "fontWeight": "bold", "color": "#fff",
+                      "formatter": js("function(p){ return Number(p.value).toFixed(1).replace('.', ','); }")},
+            "data": [{"type": "max", "name": "Máx"}, {"type": "min", "name": "Mín"}]
+        },
         "markLine": {"silent": True, "symbol": "none", "lineStyle": {"type": "dashed", "color": COR_VAR},
                      "label": {"formatter": "Média: {c}"}, "data": [{"type": "average", "name": "Média"}]},
     })
