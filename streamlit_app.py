@@ -1127,7 +1127,7 @@ def pagina_eventos(arquivo_1, arquivo_2):
     st.markdown("#### Possíveis ineficiências da estratégia")
     i1, i2, i3 = st.columns(3)
     lim_v = i1.number_input("Boost abaixo de (km/h)", 0.0, 100.0, 20.0, 1.0, key=f"ev_limv_{pref}")
-    lim_ac1 = i2.number_input("Alternador com tensão AC1 acima de", value=0.0, step=0.01, key=f"ev_limac1_{pref}")
+    lim_ac1 = i2.number_input("Alternador com Pedal (%) acima de", value=0.0, step=0.01, key=f"ev_limac1_{pref}")
     lim_d = i3.number_input("Pulsos curtos abaixo de (s)", 0.1, 10.0, 1.0, 0.1, key=f"ev_limd_{pref}")
     flag_boost = df[(df["Modo"] == "Boost") & (df["Vel. média (km/h)"] < lim_v)]
     flag_alt = df[(df["Modo"] == "Alternador") & (df["Tensão AC1 média"] > lim_ac1)]
