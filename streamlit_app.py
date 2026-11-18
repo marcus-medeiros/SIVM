@@ -1326,29 +1326,48 @@ def renderizar_analise_estatistica(arquivo_1, arquivo_2):
     }, "430px", f"estat_dist_{prefixo}")
     st.caption("A curva normal é uma referência calculada com a média e o desvio-padrão da amostra. "
                "Ela não implica que os dados sigam necessariamente uma distribuição normal.")
-
+    #
     # Boxplot por modo
     st.divider()
     st.subheader("Comparação entre modos operacionais")
     caixas, nomes_box, cores_box = [], [], []
+    min_box, max_box, media_box = [], [], []
+    
     for m in MODOS:
         (v,) = extrair(dados, prefixo, [f"{prefixo}{suf}"], m["cod"])
         if len(v) >= 5:
+            i = len(nomes_box)
             p = np.percentile(v, [10, 25, 50, 75, 90])
             caixas.append([round(float(x), 3) for x in p])
             nomes_box.append(m["curto"])
             cores_box.append(m["cor"])
+            min_box.append([i, float(np.min(v))])
+            max_box.append([i, float(np.max(v))])
+            media_box.append([i, float(np.mean(v))])
+    
     if caixas:
         grafico({
-            "title": {"text": f"{nome_var} por modo", "subtext": "Caixa: P25–P75 | traço: mediana | hastes: P10–P90",
+            "title": {"text": f"{nome_var} por modo",
+                      "subtext": "Caixa: P25–P75 | hastes: P10–P90 | pontos: mínimo, máximo e média",
                       "left": "center", "subtextStyle": {"fontSize": 11, "color": "#777"}},
             "tooltip": {"trigger": "item"},
             "grid": {"left": "8%", "right": "5%", "bottom": "10%", "top": "22%", "containLabel": True},
             "xAxis": {"type": "category", "data": nomes_box},
             "yAxis": {"type": "value", "name": nome_var, "scale": True, "splitLine": {"show": False}},
-            "series": [{"type": "boxplot", "data": [{"value": c, "itemStyle": {"borderColor": cor, "color": cor + "55"}}
-                                                    for c, cor in zip(caixas, cores_box)]}],
-        }, "400px", f"estat_box_{prefixo}")
+            "series": [
+                {"type": "boxplot", "data": [{"value": c, "itemStyle": {"borderColor": cor, "color": cor + "55"}}
+                                             for c, cor in zip(caixas, cores_box)]},
+                {"name": "Mínimo", "type": "scatter", "data": min_box, "symbolSize": 7,
+                 "itemStyle": {"color": COR_VEL}, "label": {"show": True, "position": "bottom", "fontSize": 9,
+                 "formatter": js("function(p){return 'Mín: ' + Number(p.value[1]).toFixed(2).replace('.', ',');}")}, "z": 10},
+                {"name": "Máximo", "type": "scatter", "data": max_box, "symbolSize": 7,
+                 "itemStyle": {"color": COR_REGEN}, "label": {"show": True, "position": "top", "fontSize": 9,
+                 "formatter": js("function(p){return 'Máx: ' + Number(p.value[1]).toFixed(2).replace('.', ',');}")}, "z": 10},
+                {"name": "Média", "type": "scatter", "data": media_box, "symbolSize": 7,
+                 "itemStyle": {"color": COR_ALTERNADOR}, "label": {"show": True, "position": "right", "fontSize": 9,
+                 "formatter": js("function(p){return 'Média: ' + Number(p.value[1]).toFixed(2).replace('.', ',');}")}, "z": 10},
+            ],
+        }, "450px", f"estat_box_{prefixo}")
     else:
         st.info("Amostras insuficientes por modo para o boxplot.")
 
@@ -1688,11 +1707,15 @@ def tabela_estatistica(arquivos, prefixo, cod):
 
 def grafico_boxplot_arquivos(df_var, variavel, subtitulo, chave):
     nomes = df_var["Arquivo"].tolist()
-    caixas = [[round(r["Mínimo"], 3), round(r["P25"], 3), round(r["Mediana"], 3), round(r["P75"], 3),
-               round(r["Máximo"], 3)] for _, r in df_var.iterrows()]
-    medias = [[i, round(float(r["Média"]), 3)] for i, (_, r) in enumerate(df_var.iterrows())]
+    caixas = [[round(r["Mínimo"], 3), round(r["P25"], 3), round(r["Mediana"], 3),
+               round(r["P75"], 3), round(r["Máximo"], 3)] for _, r in df_var.iterrows()]
+    minimos = [[i, round(r["Mínimo"], 3)] for i, (_, r) in enumerate(df_var.iterrows())]
+    maximos = [[i, round(r["Máximo"], 3)] for i, (_, r) in enumerate(df_var.iterrows())]
+    medias = [[i, round(r["Média"], 3)] for i, (_, r) in enumerate(df_var.iterrows())]
+
     grafico({
-        "title": {"text": f"Comparação de {variavel}", "subtext": subtitulo + " | hastes: mín–máx, caixa: P25–P75, ponto: média",
+        "title": {"text": f"Comparação de {variavel}",
+                  "subtext": subtitulo + " | hastes: mín–máx, caixa: P25–P75, pontos: mín, máx e média",
                   "left": "center", "top": "2%", "textStyle": {"fontSize": 17, "fontWeight": "bold"},
                   "subtextStyle": {"fontSize": 11, "color": "#757575"}},
         "tooltip": {"trigger": "item"},
@@ -1702,9 +1725,17 @@ def grafico_boxplot_arquivos(df_var, variavel, subtitulo, chave):
         "series": [
             {"name": "Distribuição", "type": "boxplot", "data": caixas,
              "itemStyle": {"color": "#c9b3d6", "borderColor": COR_BOOST}},
-            {"name": "Média", "type": "scatter", "data": medias, "symbolSize": 11,
-             "itemStyle": {"color": COR_ALTERNADOR, "borderColor": "#fff"}, "z": 10,
-             "tooltip": {"formatter": js("function(p){ return 'Média: <b>' + Number(p.value[1]).toFixed(2).replace('.', ',') + '</b>'; }")}},
+            {"name": "Mínimo", "type": "scatter", "data": minimos, "symbolSize": 7,
+             "itemStyle": {"color": COR_VEL}, "label": {"show": True, "position": "bottom", "fontSize": 9,
+             "formatter": js("function(p){return 'Mín: ' + Number(p.value[1]).toFixed(2).replace('.', ',');}")}, "z": 10},
+            {"name": "Máximo", "type": "scatter", "data": maximos, "symbolSize": 7,
+             "itemStyle": {"color": COR_REGEN}, "label": {"show": True, "position": "top", "fontSize": 9,
+             "formatter": js("function(p){return 'Máx: ' + Number(p.value[1]).toFixed(2).replace('.', ',');}")}, "z": 10},
+            {"name": "Média", "type": "scatter", "data": medias, "symbolSize": 7,
+             "itemStyle": {"color": COR_ALTERNADOR, "borderColor": "#fff"},
+             "label": {"show": True, "position": "right", "fontSize": 9,
+             "formatter": js("function(p){return 'Média: ' + Number(p.value[1]).toFixed(2).replace('.', ',');}")},
+             "z": 11},
         ],
     }, "560px", chave)
 
