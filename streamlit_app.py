@@ -914,7 +914,9 @@ def tabela_eventos(dados, prefixo) -> pd.DataFrame:
             v_ini = vel[i] if vel is not None else np.nan
             v_fim = vel[min(f, len(vel)) - 1] if vel is not None else np.nan
             dist = (np.nansum(vel[i:f]) / 3.6 * DT_AMOSTRAGEM / 1000) if vel is not None else np.nan
-            d_soc = (soc[min(f, len(soc)) - 1] - soc[i]) if soc is not None and len(soc) > i else np.nan
+            soc_ini = float(soc[i]) if soc is not None and len(soc) > i else np.nan
+            soc_fim = float(soc[min(f, len(soc)) - 1]) if soc is not None and len(soc) > i else np.nan
+            d_soc = soc_fim - soc_ini if np.isfinite(soc_ini) and np.isfinite(soc_fim) else np.nan
             linhas.append({
                 "Modo": m["curto"],
                 "Início (s)": round(i * DT_AMOSTRAGEM, 2),
@@ -928,6 +930,8 @@ def tabela_eventos(dados, prefixo) -> pd.DataFrame:
                 "Throttle médio (%)": agg(thr, i, f, np.mean),
                 "Tensão média (V)": agg(volt, i, f, np.mean),
                 "Distância (km)": float(dist),
+                "SOC inicial (%)": soc_ini,
+                "SOC final (%)": soc_fim,
                 "ΔSOC (%)": float(d_soc),
             })
     df = pd.DataFrame(linhas)
