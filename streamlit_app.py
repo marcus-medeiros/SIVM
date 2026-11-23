@@ -740,32 +740,49 @@ def grafico_sobreposto(dados_a, dados_b, nome_a, nome_b, prefixo, sufixo, eixo_x
 
 
 def grafico_ah_acumulado(dados, prefixo, subtitulo, chave):
-    """Ah acumulado ao longo do tempo, por modo, e saldo líquido."""
-    corrente = get_serie(dados, f"{prefixo}CorrenteFiltro")
-    if corrente is None:
-        st.warning("Variável de corrente da bateria (CorrenteFiltro) não encontrada.")
+    curvas = dados.get(f"{prefixo}Capacidade_modo_curva")
+    if curvas is None:
+        st.warning("Variável Capacidade_modo_curva não encontrada.")
         return
-    n = len(corrente)
-    modos = vetor_modos(dados, prefixo, n)
-    i0 = np.nan_to_num(corrente)
+
+    curvas = np.asarray(curvas, dtype=float)
+    if curvas.ndim != 2:
+        st.warning("Capacidade_modo_curva deve ser uma matriz com as curvas dos modos.")
+        return
+
+    if curvas.shape[1] == len(MODOS):
+        pass
+    elif curvas.shape[0] == len(MODOS):
+        curvas = curvas.T
+    else:
+        st.warning("Dimensões incompatíveis em Capacidade_modo_curva.")
+        return
+
+    n = len(curvas)
     t = np.arange(n) * DT_AMOSTRAGEM
     sl = slice(None, None, passo_decimacao(n))
 
     series, legenda = [], []
-    for k, m in enumerate(MODOS, start=1):
-        cum = np.cumsum(np.where(modos == k, i0, 0.0)) * DT_AMOSTRAGEM / 3600
+    for i, m in enumerate(MODOS):
         legenda.append(m["curto"])
-        series.append({"name": m["curto"], "type": "line", "showSymbol": False,
-                       "data": to_pts(t[sl], cum[sl]), "lineStyle": {"color": m["cor"], "width": 2},
-                       "itemStyle": {"color": m["cor"]}, "areaStyle": {"color": m["cor"], "opacity": 0.12}})
-    saldo = np.cumsum(i0) * DT_AMOSTRAGEM / 3600
+        series.append({
+            "name": m["curto"], "type": "line", "showSymbol": False,
+            "data": to_pts(t[sl], curvas[sl, i]),
+            "lineStyle": {"color": m["cor"], "width": 2},
+            "itemStyle": {"color": m["cor"]}
+        })
+
+    saldo = np.nansum(curvas, axis=1)
     legenda.append("Saldo líquido")
-    series.append({"name": "Saldo líquido", "type": "line", "showSymbol": False,
-                   "data": to_pts(t[sl], saldo[sl]),
-                   "lineStyle": {"color": "#111", "width": 2.5, "type": "dashed"}, "itemStyle": {"color": "#111"}})
+    series.append({
+        "name": "Saldo líquido", "type": "line", "showSymbol": False,
+        "data": to_pts(t[sl], saldo[sl]),
+        "lineStyle": {"color": "#111", "width": 2.5, "type": "dashed"}
+    })
+
     opcoes = {
-        "title": {"text": "Ah acumulado por modo operacional", "subtext": subtitulo, "left": "center",
-                  "subtextStyle": {"fontSize": 11, "color": "#777"}},
+        "title": {"text": "Ah acumulado por modo operacional", "subtext": subtitulo,
+                  "left": "center", "subtextStyle": {"fontSize": 11, "color": "#777"}},
         "tooltip": {"trigger": "axis", "axisPointer": {"type": "cross"}},
         "legend": {"top": "12%", "data": legenda},
         "grid": {"left": "7%", "right": "5%", "top": "24%", "bottom": "18%", "containLabel": True},
@@ -776,10 +793,6 @@ def grafico_ah_acumulado(dados, prefixo, subtitulo, chave):
         "series": series,
     }
     grafico(opcoes, "480px", chave)
-    st.caption("Sinal do Ah conforme a convenção da corrente da bateria nos arquivos MAT "
-               "(nos balanços, Boost e cargas auxiliares aparecem negativos; Alternador e Frenagem positivos).")
-
-
 # =======================================================================
 # 6. KPIs
 # =======================================================================
