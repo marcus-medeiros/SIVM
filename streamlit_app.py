@@ -740,39 +740,33 @@ def grafico_sobreposto(dados_a, dados_b, nome_a, nome_b, prefixo, sufixo, eixo_x
 
 
 def grafico_ah_acumulado(dados, prefixo, subtitulo, chave):
-    curvas = dados.get(f"{prefixo}Capacidade_modo_curva")
-    if curvas is None:
-        st.warning("Variável Capacidade_modo_curva não encontrada.")
-        return
+    curvas = {}
+    for m in MODOS:
+        nome = f"{prefixo}{m['cap']}_curva"
+        v = get_serie(dados, nome)
+        if v is None:
+            st.warning(f"Variável {nome} não encontrada.")
+            return
+        curvas[m["curto"]] = v
 
-    curvas = np.asarray(curvas, dtype=float)
-    if curvas.ndim != 2:
-        st.warning("Capacidade_modo_curva deve ser uma matriz com as curvas dos modos.")
-        return
-
-    if curvas.shape[1] == len(MODOS):
-        pass
-    elif curvas.shape[0] == len(MODOS):
-        curvas = curvas.T
-    else:
-        st.warning("Dimensões incompatíveis em Capacidade_modo_curva.")
-        return
-
-    n = len(curvas)
+    n = min(len(v) for v in curvas.values())
     t = np.arange(n) * DT_AMOSTRAGEM
     sl = slice(None, None, passo_decimacao(n))
 
     series, legenda = [], []
-    for i, m in enumerate(MODOS):
-        legenda.append(m["curto"])
+    for m in MODOS:
+        nome = m["curto"]
+        v = curvas[nome][:n]
+        legenda.append(nome)
         series.append({
-            "name": m["curto"], "type": "line", "showSymbol": False,
-            "data": to_pts(t[sl], curvas[sl, i]),
+            "name": nome, "type": "line", "showSymbol": False,
+            "data": to_pts(t[sl], v[sl]),
             "lineStyle": {"color": m["cor"], "width": 2},
-            "itemStyle": {"color": m["cor"]}
+            "itemStyle": {"color": m["cor"]},
+            "areaStyle": {"color": m["cor"], "opacity": 0.12}
         })
 
-    saldo = np.nansum(curvas, axis=1)
+    saldo = np.nansum(np.vstack([curvas[m["curto"]][:n] for m in MODOS]), axis=0)
     legenda.append("Saldo líquido")
     series.append({
         "name": "Saldo líquido", "type": "line", "showSymbol": False,
