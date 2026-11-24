@@ -622,7 +622,7 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
             "show": True,
             "position": "top",
             "distance": 8,
-            "fontSize": 15,
+            "fontSize": 12,
             "fontWeight": "bold",
             "backgroundColor": "rgba(255,255,255,0.90)",
             "padding": [3, 5],
