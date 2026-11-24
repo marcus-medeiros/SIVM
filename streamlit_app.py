@@ -624,35 +624,24 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
                 "borderRadius": 3
             }
         }
-    
         # Velocidade
         idx_vel = len(series)
         serie_vel = {
-            "name": "Velocidade", "type": "line",
-            "xAxisIndex": 0, "yAxisIndex": 0,
-            "data": to_pts(x[sl], vel[sl], modos[sl]),
-            "showSymbol": False, "z": 5,
+            "name": "Velocidade", "type": "line", "xAxisIndex": 0, "yAxisIndex": 0,
+            "data": to_pts(x[sl], vel[sl], modos[sl]), "showSymbol": False, "z": 5,
             "lineStyle": {"color": COR_VEL, "width": 2.5},
             "itemStyle": {"color": COR_VEL}
         }
-        #
+    
         if mostrar_max:
             serie_vel["markPoint"] = {
-                **estilo_marcador,
-                "label": {
-                    **estilo_marcador["label"],
-                    "color": COR_VEL,
-                    "position": "top",
-                    "formatter": js("function(p){return 'Máx: ' + Number(p.value).toFixed(1).replace('.', ',');}")
-                },
+                "symbolSize": 42,
                 "data": [{"type": "max", "name": "Máx"}]
             }
     
         if fases and por_tempo:
-            pts = [
-                {"xAxis": float(t), "name": nome}
-                for nome, t in fases if x[0] <= t <= x[-1]
-            ]
+            pts = [{"xAxis": float(t), "name": nome}
+                   for nome, t in fases if x[0] <= t <= x[-1]]
             if pts:
                 serie_vel["markLine"] = {
                     "silent": True, "symbol": "none",
@@ -661,6 +650,37 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
                     "data": pts
                 }
     
+        series.append(serie_vel)
+    
+        # Variável selecionada
+        serie_dir = {
+            "name": rotulo_var(sufixo_dir), "type": "line",
+            "xAxisIndex": 0, "yAxisIndex": 1,
+            "data": to_pts(x[sl], dire[sl]), "showSymbol": False, "z": 6,
+            "lineStyle": {"color": COR_VAR, "width": 2},
+            "itemStyle": {"color": COR_VAR}
+        }
+    
+        pontos = []
+        if mostrar_max:
+            pontos.append({"type": "max", "name": "Máx"})
+        if mostrar_min:
+            pontos.append({"type": "min", "name": "Mín"})
+    
+        if pontos:
+            serie_dir["markPoint"] = {
+                "symbolSize": 42,
+                "data": pontos
+            }
+    
+        if mostrar_media:
+            serie_dir["markLine"] = {
+                "silent": True, "symbol": "none",
+                "lineStyle": {"type": "dashed", "color": COR_VAR},
+                "label": {"formatter": "Média: {c}"},
+                "data": [{"type": "average", "name": "Média"}]
+            }
+
         series.append(serie_vel)
     
         # Variável selecionada
