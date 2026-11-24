@@ -693,31 +693,50 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
             "itemStyle": {"color": COR_VAR}
         }
     
+        # Marcadores da variável selecionada
         pontos = []
-        if mostrar_max:
-            pontos.append({"type": "max", "name": "Máx"})
-        if mostrar_min:
-            pontos.append({"type": "min", "name": "Mín"})
-        #
+        validos = np.flatnonzero(np.isfinite(dire))
+    
+        if validos.size:
+            if mostrar_max:
+                imax = validos[np.argmax(dire[validos])]
+                pontos.append({
+                    "coord": [float(x[imax]), float(dire[imax])],
+                    "name": "Máx",
+                    "value": float(dire[imax])
+                })
+    
+            if mostrar_min:
+                imin = validos[np.argmin(dire[validos])]
+                pontos.append({
+                    "coord": [float(x[imin]), float(dire[imin])],
+                    "name": "Mín",
+                    "value": float(dire[imin])
+                })
+    
         if pontos:
             serie_dir["markPoint"] = {
-                **estilo_marcador,
+                "symbol": tipo_marcador,
+                "symbolSize": 42,
                 "label": {
-                    **estilo_marcador["label"],
-                    "color": COR_VAR,
-                    "formatter": js("function(p){return p.name + ': ' + Number(p.value).toFixed(1).replace('.', ',');}")
+                    "show": True,
+                    "position": "inside",
+                    "fontSize": 10,
+                    "fontWeight": "bold",
+                    "color": "#fff",
+                    "formatter": js(
+                        "function(p){return Number(p.value).toFixed(1).replace('.', ',');}"
+                    )
                 },
-                "data": [
-                    {"type": "max", "name": "Máx", "label": {"position": "top"}},
-                    {"type": "min", "name": "Mín", "label": {"position": "bottom"}}
-                ]
+                "data": pontos
             }
     
         if mostrar_media:
             serie_dir["markLine"] = {
-                "silent": True, "symbol": "none",
+                "silent": True,
+                "symbol": "none",
                 "lineStyle": {"type": "dashed", "color": COR_VAR},
-                "label": {"formatter": "Média: {c}", "fontSize": 10},
+                "label": {"show": True, "formatter": "Média: {c}"},
                 "data": [{"type": "average", "name": "Média"}]
             }
     
