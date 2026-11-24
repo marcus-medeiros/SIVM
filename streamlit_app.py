@@ -2039,8 +2039,8 @@ def exibir_comparacao_temporal(arquivos, prefixo, chave):
                          key=f"tmp_msel_{chave}")
     modos_idx = [i for i, m in enumerate(MODOS, start=1) if m["nome"] in sel]
     c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
-    mostrar_max = c1.checkbox("Máximo", True, key=f"tmp_{chave}_max")
-    mostrar_min = c2.checkbox("Mínimo", True, key=f"tmp_{chave}_min")
+    mostrar_max = c1.checkbox("Máx. Velocidade", True, key=f"tmp_{chave}_max")
+    mostrar_min = c2.checkbox("Min/Máx. Var. Sel.", True, key=f"tmp_{chave}_min")
     mostrar_media = c3.checkbox("Média", True, key=f"tmp_{chave}_media")
     
     simbolos = {"pin": "Alfinete", "circle": "Círculo", "rect": "Retângulo",
