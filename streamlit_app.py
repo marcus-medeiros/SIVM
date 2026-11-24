@@ -614,14 +614,14 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
     
         # Configuração dos marcadores
         estilo_marcador = {
-            "symbol": tipo_marcador,
-            "symbolSize": 52,
+            "symbol": "none",
             "label": {
-                "show": True, "position": "inside",
-                "fontSize": 9, "fontWeight": "bold", "color": "#fff",
-                "formatter": js(
-                    "function(p){return Number(p.value).toFixed(1).replace('.', ',');}"
-                )
+                "show": True,
+                "fontSize": 10,
+                "fontWeight": "bold",
+                "backgroundColor": "rgba(255,255,255,0.85)",
+                "padding": [3, 5],
+                "borderRadius": 3
             }
         }
     
@@ -635,10 +635,16 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
             "lineStyle": {"color": COR_VEL, "width": 2.5},
             "itemStyle": {"color": COR_VEL}
         }
-    
+        #
         if mostrar_max:
             serie_vel["markPoint"] = {
                 **estilo_marcador,
+                "label": {
+                    **estilo_marcador["label"],
+                    "color": COR_VEL,
+                    "position": "top",
+                    "formatter": js("function(p){return 'Máx: ' + Number(p.value).toFixed(1).replace('.', ',');}")
+                },
                 "data": [{"type": "max", "name": "Máx"}]
             }
     
@@ -672,11 +678,19 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
             pontos.append({"type": "max", "name": "Máx"})
         if mostrar_min:
             pontos.append({"type": "min", "name": "Mín"})
-    
+        #
         if pontos:
             serie_dir["markPoint"] = {
                 **estilo_marcador,
-                "data": pontos
+                "label": {
+                    **estilo_marcador["label"],
+                    "color": COR_VAR,
+                    "formatter": js("function(p){return p.name + ': ' + Number(p.value).toFixed(1).replace('.', ',');}")
+                },
+                "data": [
+                    {"type": "max", "name": "Máx", "label": {"position": "top"}},
+                    {"type": "min", "name": "Mín", "label": {"position": "bottom"}}
+                ]
             }
     
         if mostrar_media:
