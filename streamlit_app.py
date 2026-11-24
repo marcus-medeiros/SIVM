@@ -682,7 +682,7 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
             }
 
         series.append(serie_vel)
-    
+        #
         # Variável selecionada
         serie_dir = {
             "name": rotulo_var(sufixo_dir), "type": "line",
@@ -693,50 +693,24 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
             "itemStyle": {"color": COR_VAR}
         }
     
-        # Marcadores da variável selecionada
         pontos = []
-        validos = np.flatnonzero(np.isfinite(dire))
-    
-        if validos.size:
-            if mostrar_max:
-                imax = validos[np.argmax(dire[validos])]
-                pontos.append({
-                    "coord": [float(x[imax]), float(dire[imax])],
-                    "name": "Máx",
-                    "value": float(dire[imax])
-                })
-    
-            if mostrar_min:
-                imin = validos[np.argmin(dire[validos])]
-                pontos.append({
-                    "coord": [float(x[imin]), float(dire[imin])],
-                    "name": "Mín",
-                    "value": float(dire[imin])
-                })
+        if mostrar_max:
+            pontos.append({"type": "max", "name": "Máx"})
+        if mostrar_min:
+            pontos.append({"type": "min", "name": "Mín"})
     
         if pontos:
             serie_dir["markPoint"] = {
                 "symbol": tipo_marcador,
                 "symbolSize": 42,
-                "label": {
-                    "show": True,
-                    "position": "inside",
-                    "fontSize": 10,
-                    "fontWeight": "bold",
-                    "color": "#fff",
-                    "formatter": js(
-                        "function(p){return Number(p.value).toFixed(1).replace('.', ',');}"
-                    )
-                },
                 "data": pontos
             }
     
         if mostrar_media:
             serie_dir["markLine"] = {
-                "silent": True,
-                "symbol": "none",
+                "silent": True, "symbol": "none",
                 "lineStyle": {"type": "dashed", "color": COR_VAR},
-                "label": {"show": True, "formatter": "Média: {c}"},
+                "label": {"formatter": "Média: {c}"},
                 "data": [{"type": "average", "name": "Média"}]
             }
     
