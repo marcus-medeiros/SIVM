@@ -2004,6 +2004,15 @@ def exibir_comparacao_temporal(arquivos, prefixo, chave):
     sel = st.multiselect("Modos exibidos:", [m["nome"] for m in MODOS], default=[m["nome"] for m in MODOS],
                          key=f"tmp_msel_{chave}")
     modos_idx = [i for i, m in enumerate(MODOS, start=1) if m["nome"] in sel]
+    c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
+    mostrar_max = c1.checkbox("Máximo", True, key=f"tmp_{chave}_max")
+    mostrar_min = c2.checkbox("Mínimo", True, key=f"tmp_{chave}_min")
+    mostrar_media = c3.checkbox("Média", True, key=f"tmp_{chave}_media")
+    
+    simbolos = {"pin": "Alfinete", "circle": "Círculo", "rect": "Retângulo",
+                "triangle": "Triângulo", "diamond": "Losango"}
+    tipo_marcador = c4.selectbox("Tipo do marcador:", list(simbolos.keys()),
+                                 format_func=lambda x: simbolos[x], key=f"tmp_{chave}_simbolo")
     fases = [("Fim transiente a frio", 505.0), ("Fim fase estabilizada", 1372.0)] \
         if prefixo == "f" and st.checkbox("Mostrar fases do FTP (505 s / 1372 s)", key=f"tmp_fases_{chave}") else None
     st.markdown("#### Primeiro ensaio")
