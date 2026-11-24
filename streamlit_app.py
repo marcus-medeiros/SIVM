@@ -526,20 +526,24 @@ def _intervalos_modo(modos, x, idx_modo):
 
 
 def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILOS[0],
-                     modos_sel=None, janela=None, eixo_x="Tempo (s)", fases=None):
+                     modos_sel=None, janela=None, eixo_x="Tempo (s)", fases=None,
+                     mostrar_max=True, mostrar_min=True, mostrar_media=True,
+                     tipo_marcador="pin"):
     """
-    Velocidade (eixo esquerdo) × variável (eixo direito) com visualização dos modos:
-    faixa de modos alinhada abaixo, sombreado, e/ou linha de velocidade colorida pelo modo.
+    Velocidade × variável com visualização dos modos, sombreado, faixa,
+    linha colorida e marcadores configuráveis.
     """
     vel = get_serie(dados, f"{prefixo}Speed_com")
     dire = get_serie(dados, f"{prefixo}{sufixo_dir}")
     if vel is None or dire is None:
         st.warning(f"Não foi possível extrair velocidade ou {rotulo_var(sufixo_dir)}.")
         return
+
     n = min(len(vel), len(dire))
     if n < 2:
         st.warning("Não existem amostras suficientes.")
         return
+
     vel, dire = vel[:n], dire[:n]
     modos = vetor_modos(dados, prefixo, n)
     por_tempo = eixo_x.startswith("Tempo")
@@ -552,82 +556,144 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
     if i1 - i0 < 2:
         st.warning("Janela de tempo muito curta.")
         return
+
     x, vel, dire, modos = x[i0:i1], vel[i0:i1], dire[i0:i1], modos[i0:i1]
 
-    modos_sel = modos_sel or list(range(1, len(MODOS) + 1))
+    modos_sel = modos_sel if modos_sel is not None else list(range(1, len(MODOS) + 1))
     faixa = estilo in (ESTILOS[0], ESTILOS[1], ESTILOS[3])
     sombra = estilo in (ESTILOS[0], ESTILOS[2])
     colorida = estilo == ESTILOS[3]
 
-    #                     
-    legenda = ["Velocidade", rotulo_var(sufixo_dir)]
-    series = []
     passo = passo_decimacao(len(x))
     sl = slice(None, None, passo)
-    
+
+    legenda = ["Velocidade", rotulo_var(sufixo_dir)]
+    series = []
+
     for k, m in enumerate(MODOS, start=1):
         if k not in modos_sel:
             continue
+
         inter = _intervalos_modo(modos, x, k)
         if not inter:
             continue
+
         legenda.append(m["nome"])
-        base = {"name": m["nome"], "type": "line", "data": [], "symbol": "none",
-                "lineStyle": {"color": m["cor"], "width": 3},
-                "itemStyle": {"color": m["cor"]}}
+
+        base = {
+            "name": m["nome"], "type": "line", "data": [], "symbol": "none",
+            "lineStyle": {"color": m["cor"], "width": 3},
+            "itemStyle": {"color": m["cor"]}
+        }
+
+        # Sombreado abaixo da curva de velocidade
         if sombra:
             vel_sombra = np.where(modos[sl] == k, vel[sl], np.nan)
             series.append({
-                "name": m["nome"], "type": "line", "xAxisIndex": 0, "yAxisIndex": 0,
-                "data": to_pts(x[sl], vel_sombra), "showSymbol": False,
-                "connectNulls": False, "lineStyle": {"opacity": 0},
-                "areaStyle": {"color": m["cor"], "opacity": 0.25},
-                "silent": True, "tooltip": {"show": False}, "z": 1,
+                "name": m["nome"], "type": "line",
+                "xAxisIndex": 0, "yAxisIndex": 0,
+                "data": to_pts(x[sl], vel_sombra),
+                "showSymbol": False, "connectNulls": False,
+                "lineStyle": {"opacity": 0},
+                "areaStyle": {"color": m["cor"], "opacity": 0.30},
+                "silent": True, "tooltip": {"show": False}, "z": 1
             })
+
+        # Faixa de modos
         if faixa:
-            series.append({**base, "xAxisIndex": 1, "yAxisIndex": 1,
-                           "markArea": {"silent": True, "itemStyle": {"color": m["cor"], "opacity": 0.92},
-                                        "data": inter}})
+            series.append({
+                **base, "xAxisIndex": 1, "yAxisIndex": 1,
+                "markArea": {
+                    "silent": True,
+                    "itemStyle": {"color": m["cor"], "opacity": 0.92},
+                    "data": inter
+                }
+            })
+
+    # Configuração dos marcadores
+    estilo_marcador = {
+        "symbol": tipo_marcador,
+        "symbolSize": 52,
+        "label": {
+            "show": True, "position": "inside",
+            "fontSize": 9, "fontWeight": "bold", "color": "#fff",
+            "formatter": js(
+                "function(p){return Number(p.value).toFixed(1).replace('.', ',');}"
+            )
+        }
+    }
+
+    # Velocidade
     idx_vel = len(series)
     serie_vel = {
-        "name": "Velocidade", "type": "line", "xAxisIndex": 0, "yAxisIndex": 0,
-        "data": to_pts(x[sl], vel[sl], modos[sl]), "showSymbol": False, "z": 5,
-        "lineStyle": {"color": COR_VEL, "width": 2.5}, "itemStyle": {"color": COR_VEL},
-        "markPoint": {
-            "symbol": "pin", "symbolSize": 52,
-            "label": {"show": True, "position": "inside", "fontSize": 9,
-                      "fontWeight": "bold", "color": "#fff",
-                      "formatter": js("function(p){ return Number(p.value).toFixed(1).replace('.', ','); }")},
-            "data": [{"type": "max", "name": "Máx"}]
-        },
+        "name": "Velocidade", "type": "line",
+        "xAxisIndex": 0, "yAxisIndex": 0,
+        "data": to_pts(x[sl], vel[sl], modos[sl]),
+        "showSymbol": False, "z": 5,
+        "lineStyle": {"color": COR_VEL, "width": 2.5},
+        "itemStyle": {"color": COR_VEL}
     }
+
+    if mostrar_max:
+        serie_vel["markPoint"] = {
+            **estilo_marcador,
+            "data": [{"type": "max", "name": "Máx"}]
+        }
+
     if fases and por_tempo:
-        pts = [{"xAxis": float(t), "name": nome} for nome, t in fases if x[0] <= t <= x[-1]]
+        pts = [
+            {"xAxis": float(t), "name": nome}
+            for nome, t in fases if x[0] <= t <= x[-1]
+        ]
         if pts:
-            serie_vel["markLine"] = {"silent": True, "symbol": "none",
-                                     "lineStyle": {"type": "dashed", "color": "#888"},
-                                     "label": {"formatter": "{b}", "fontSize": 10}, "data": pts}
+            serie_vel["markLine"] = {
+                "silent": True, "symbol": "none",
+                "lineStyle": {"type": "dashed", "color": "#888"},
+                "label": {"formatter": "{b}", "fontSize": 10},
+                "data": pts
+            }
+
     series.append(serie_vel)
-    series.append({
-        "name": rotulo_var(sufixo_dir), "type": "line", "xAxisIndex": 0, "yAxisIndex": 1,
-        "data": to_pts(x[sl], dire[sl]), "showSymbol": False, "z": 6,
-        "lineStyle": {"color": COR_VAR, "width": 2}, "itemStyle": {"color": COR_VAR},
-        "markPoint": {
-            "symbol": "pin", "symbolSize": 52,
-            "label": {"show": True, "position": "inside", "fontSize": 9,
-                      "fontWeight": "bold", "color": "#fff",
-                      "formatter": js("function(p){ return Number(p.value).toFixed(1).replace('.', ','); }")},
-            "data": [{"type": "max", "name": "Máx"}, {"type": "min", "name": "Mín"}]
-        },
-        "markLine": {"silent": True, "symbol": "none", "lineStyle": {"type": "dashed", "color": COR_VAR},
-                     "label": {"formatter": "Média: {c}"}, "data": [{"type": "average", "name": "Média"}]},
-    })
+
+    # Variável selecionada
+    serie_dir = {
+        "name": rotulo_var(sufixo_dir), "type": "line",
+        "xAxisIndex": 0, "yAxisIndex": 1,
+        "data": to_pts(x[sl], dire[sl]),
+        "showSymbol": False, "z": 6,
+        "lineStyle": {"color": COR_VAR, "width": 2},
+        "itemStyle": {"color": COR_VAR}
+    }
+
+    pontos = []
+    if mostrar_max:
+        pontos.append({"type": "max", "name": "Máx"})
+    if mostrar_min:
+        pontos.append({"type": "min", "name": "Mín"})
+
+    if pontos:
+        serie_dir["markPoint"] = {
+            **estilo_marcador,
+            "data": pontos
+        }
+
+    if mostrar_media:
+        serie_dir["markLine"] = {
+            "silent": True, "symbol": "none",
+            "lineStyle": {"type": "dashed", "color": COR_VAR},
+            "label": {"formatter": "Média: {c}", "fontSize": 10},
+            "data": [{"type": "average", "name": "Média"}]
+        }
+
+    series.append(serie_dir)
 
     rot_x = "Tempo (s)" if por_tempo else "Distância (km)"
+
     tooltip = js("""function(params){
         if (!params || !params.length) return '';
         const nomes = __NOMES__;
-        let r = '<b>__XL__: ' + Number(params[0].value[0]).toFixed(2).replace('.', ',') + '</b><br/>';
+        let r = '<b>__XL__: ' +
+            Number(params[0].value[0]).toFixed(2).replace('.', ',') + '</b><br/>';
         params.forEach(function(it){
             if (!it.value || it.value[1] == null) return;
             r += it.marker + ' ' + it.seriesName + ': <b>' +
@@ -635,64 +701,117 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
             if (it.value.length > 2 && it.value[2] != null)
                 r += '&nbsp;&nbsp;&nbsp;Modo: ' + nomes[it.value[2]] + '<br/>';
         });
-        return r; }""".replace("__NOMES__", json.dumps(NOMES_MODO_IDX, ensure_ascii=False))
-                 .replace("__XL__", rot_x))
+        return r;
+    }""".replace("__NOMES__", json.dumps(NOMES_MODO_IDX, ensure_ascii=False))
+        .replace("__XL__", rot_x))
 
     xmin, xmax = round(float(x[0]), 3), round(float(x[-1]), 3)
-    eixo_base = {"type": "value", "min": xmin, "max": xmax,
-                 "splitLine": {"show": True, "lineStyle": {"type": "dashed", "opacity": 0.35}}}
+    eixo_base = {
+        "type": "value", "min": xmin, "max": xmax,
+        "splitLine": {
+            "show": True,
+            "lineStyle": {"type": "dashed", "opacity": 0.35}
+        }
+    }
+
     if faixa:
-        grids = [{"left": "7%", "right": "7%", "top": "24%", "height": "46%", "containLabel": True},
-                 {"left": "7%", "right": "7%", "top": "76%", "height": "6%", "containLabel": True}]
-        xaxes = [{**eixo_base, "gridIndex": 0, "axisLabel": {"show": False}},
-                 {**eixo_base, "gridIndex": 1, "name": rot_x, "nameLocation": "middle", "nameGap": 28,
-                  "splitLine": {"show": False}}]
-        yaxes_extra = [{"type": "value", "gridIndex": 1, "min": 0, "max": 1, "show": False}]
+        grids = [
+            {"left": "7%", "right": "7%", "top": "24%",
+             "height": "46%", "containLabel": True},
+            {"left": "7%", "right": "7%", "top": "76%",
+             "height": "6%", "containLabel": True}
+        ]
+        xaxes = [
+            {**eixo_base, "gridIndex": 0, "axisLabel": {"show": False}},
+            {**eixo_base, "gridIndex": 1, "name": rot_x,
+             "nameLocation": "middle", "nameGap": 28,
+             "splitLine": {"show": False}}
+        ]
+        yaxes_extra = [
+            {"type": "value", "gridIndex": 1, "min": 0, "max": 1, "show": False}
+        ]
         zoom_idx, altura = [0, 1], "640px"
     else:
-        grids = [{"left": "7%", "right": "7%", "top": "24%", "bottom": "18%", "containLabel": True}]
-        xaxes = [{**eixo_base, "gridIndex": 0, "name": rot_x, "nameLocation": "middle", "nameGap": 30}]
+        grids = [
+            {"left": "7%", "right": "7%", "top": "24%",
+             "bottom": "18%", "containLabel": True}
+        ]
+        xaxes = [
+            {**eixo_base, "gridIndex": 0, "name": rot_x,
+             "nameLocation": "middle", "nameGap": 30}
+        ]
         yaxes_extra, zoom_idx, altura = [], [0], "560px"
 
     yaxes = [
-        {"type": "value", "gridIndex": 0, "name": "Velocidade (km/h)", "nameLocation": "middle",
-         "nameGap": 45, "position": "left", "min": 0, "scale": True,
-         "axisLine": {"show": True, "lineStyle": {"color": COR_VEL}},
-         "splitLine": {"show": True, "lineStyle": {"type": "dotted", "opacity": 0.4}}},
-        {"type": "value", "gridIndex": 0, "name": rotulo_var(sufixo_dir), "nameLocation": "middle",
-         "nameGap": 55, "position": "right", "scale": True,
-         "axisLine": {"show": True, "lineStyle": {"color": COR_VAR}},
-         "axisLabel": {"formatter": FMT_AXIS_BR}, "splitLine": {"show": False}},
+        {
+            "type": "value", "gridIndex": 0,
+            "name": "Velocidade (km/h)",
+            "nameLocation": "middle", "nameGap": 45,
+            "position": "left", "min": 0, "scale": True,
+            "axisLine": {"show": True, "lineStyle": {"color": COR_VEL}},
+            "splitLine": {
+                "show": True,
+                "lineStyle": {"type": "dotted", "opacity": 0.4}
+            }
+        },
+        {
+            "type": "value", "gridIndex": 0,
+            "name": rotulo_var(sufixo_dir),
+            "nameLocation": "middle", "nameGap": 55,
+            "position": "right", "scale": True,
+            "axisLine": {"show": True, "lineStyle": {"color": COR_VAR}},
+            "axisLabel": {"formatter": FMT_AXIS_BR},
+            "splitLine": {"show": False}
+        }
     ]
-    # a faixa usa yAxisIndex 1 -> reordena: índice 1 precisa ser a faixa quando existe
+
+    # A faixa utiliza o eixo Y de índice 1
     if faixa:
         yaxes = [yaxes[0], yaxes_extra[0], yaxes[1]]
         for s in series:
             if s["name"] == rotulo_var(sufixo_dir):
                 s["yAxisIndex"] = 2
-            if s["name"] in ("Velocidade",):
+            if s["name"] == "Velocidade":
                 s["yAxisIndex"] = 0
 
     opcoes = {
-        "title": {"text": "Velocidade × variável × modos operacionais", "subtext": subtitulo,
-                  "left": "center", "top": "1%", "textStyle": {"fontSize": 16, "fontWeight": "bold"},
-                  "subtextStyle": {"fontSize": 11, "color": "#777"}},
-        "tooltip": {"trigger": "axis", "axisPointer": {"type": "cross"}, "formatter": tooltip},
+        "title": {
+            "text": "Velocidade × variável × modos operacionais",
+            "subtext": subtitulo,
+            "left": "center", "top": "1%",
+            "textStyle": {"fontSize": 16, "fontWeight": "bold"},
+            "subtextStyle": {"fontSize": 11, "color": "#777"}
+        },
+        "tooltip": {
+            "trigger": "axis",
+            "axisPointer": {"type": "cross"},
+            "formatter": tooltip
+        },
         "axisPointer": {"link": [{"xAxisIndex": "all"}]},
-        "legend": {"type": "scroll", "top": "12%", "left": "center", "data": legenda},
-        "grid": grids, "xAxis": xaxes, "yAxis": yaxes,
-        "dataZoom": [{"type": "inside", "xAxisIndex": zoom_idx},
-                     {"type": "slider", "xAxisIndex": zoom_idx, "bottom": "1%"}],
-        "series": series,
+        "legend": {
+            "type": "scroll", "top": "12%",
+            "left": "center", "data": legenda
+        },
+        "grid": grids,
+        "xAxis": xaxes,
+        "yAxis": yaxes,
+        "dataZoom": [
+            {"type": "inside", "xAxisIndex": zoom_idx},
+            {"type": "slider", "xAxisIndex": zoom_idx, "bottom": "1%"}
+        ],
+        "series": series
     }
+
     if colorida:
         opcoes["visualMap"] = {
-            "type": "piecewise", "show": False, "seriesIndex": idx_vel, "dimension": 2,
+            "type": "piecewise", "show": False,
+            "seriesIndex": idx_vel, "dimension": 2,
             "pieces": [{"value": 0, "color": COR_VEL}] +
-                      [{"value": k, "color": m["cor"]} for k, m in enumerate(MODOS, start=1)],
+                      [{"value": k, "color": m["cor"]}
+                       for k, m in enumerate(MODOS, start=1)]
         }
-    grafico(opcoes, altura, chave)
 
+    grafico(opcoes, altura, chave)
 
 def grafico_sobreposto(dados_a, dados_b, nome_a, nome_b, prefixo, sufixo, eixo_x, chave):
     """Dois ensaios no mesmo gráfico (velocidade à esquerda, variável à direita)."""
@@ -1188,8 +1307,9 @@ def painel_telemetria(arquivo, prefixo, nome_ciclo, chave):
                     t1 = p1.number_input("Fim do transiente a frio (s)", 0.0, 5000.0, 505.0, 1.0, key=f"{chave}_f1")
                     t2 = p2.number_input("Fim da fase estabilizada (s)", 0.0, 5000.0, 1372.0, 1.0, key=f"{chave}_f2")
                     fases = [("Fim transiente a frio", t1), ("Fim fase estabilizada", t2)]
-            grafico_temporal(dados, prefixo, sufixo, arquivo.name, f"{chave}_temporal", estilo,
-                             modos_idx, janela, eixo, fases)
+            grafico_temporal(dados, prefixo, sufixo, arquivo.name, f"{chave}_temporal",
+                 estilo, modos_idx, janela, eixo, fases,
+                 mostrar_max, mostrar_min, mostrar_media, tipo_marcador)
 
     with t_ah:
         grafico_ah_acumulado(dados, prefixo, arquivo.name, f"{chave}_ah")
@@ -1887,10 +2007,13 @@ def exibir_comparacao_temporal(arquivos, prefixo, chave):
     fases = [("Fim transiente a frio", 505.0), ("Fim fase estabilizada", 1372.0)] \
         if prefixo == "f" and st.checkbox("Mostrar fases do FTP (505 s / 1372 s)", key=f"tmp_fases_{chave}") else None
     st.markdown("#### Primeiro ensaio")
-    grafico_temporal(da, prefixo, sufixo, arquivos[ia].name, f"tmp_ga_{chave}", estilo, modos_idx, None, eixo, fases)
+    grafico_temporal(da, prefixo, sufixo, arquivos[ia].name, f"tmp_ga_{chave}",
+                 estilo, modos_idx, None, eixo, fases,
+                 mostrar_max, mostrar_min, mostrar_media, tipo_marcador)
     st.markdown("#### Segundo ensaio")
-    grafico_temporal(db, prefixo, sufixo, arquivos[ib].name, f"tmp_gb_{chave}", estilo, modos_idx, None, eixo, fases)
-
+    grafico_temporal(db, prefixo, sufixo, arquivos[ib].name, f"tmp_gb_{chave}",
+                 estilo, modos_idx, None, eixo, fases,
+                 mostrar_max, mostrar_min, mostrar_media, tipo_marcador)
 
 def bloco_comparacao(rotulo, arquivos, prefixo, chave):
     condicoes = {"Todas as amostras": None, "Boost": "boo", "Alternador": "alt",
