@@ -635,7 +635,15 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
     
         if mostrar_max:
             serie_vel["markPoint"] = {
-                "symbolSize": 42,
+                "symbol": "circle", "symbolSize": 8,
+                "itemStyle": {"color": COR_VEL, "borderColor": "#fff", "borderWidth": 1},
+                "label": {
+                    "show": True, "position": "top", "distance": 8,
+                    "fontSize": 10, "fontWeight": "bold", "color": COR_VEL,
+                    "backgroundColor": "rgba(255,255,255,0.9)",
+                    "padding": [3, 5], "borderRadius": 3,
+                    "formatter": js("function(p){return 'Máx: ' + Number(p.value).toFixed(1).replace('.', ',');}")
+                },
                 "data": [{"type": "max", "name": "Máx"}]
             }
     
@@ -669,15 +677,32 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
     
         if pontos:
             serie_dir["markPoint"] = {
-                "symbolSize": 42,
-                "data": pontos
+                "symbol": "circle", "symbolSize": 8,
+                "itemStyle": {"color": COR_VAR, "borderColor": "#fff", "borderWidth": 1},
+                "label": {
+                    "show": True, "distance": 8,
+                    "fontSize": 10, "fontWeight": "bold", "color": COR_VAR,
+                    "backgroundColor": "rgba(255,255,255,0.9)",
+                    "padding": [3, 5], "borderRadius": 3,
+                    "formatter": js("function(p){return p.name + ': ' + Number(p.value).toFixed(1).replace('.', ',');}")
+                },
+                "data": [
+                    {"type": "max", "name": "Máx", "label": {"position": "top"}},
+                    {"type": "min", "name": "Mín", "label": {"position": "bottom"}}
+                ]
             }
     
         if mostrar_media:
             serie_dir["markLine"] = {
                 "silent": True, "symbol": "none",
                 "lineStyle": {"type": "dashed", "color": COR_VAR},
-                "label": {"formatter": "Média: {c}"},
+                "label": {
+                    "show": True, "position": "insideStartTop",
+                    "fontSize": 10, "color": COR_VAR,
+                    "backgroundColor": "rgba(255,255,255,0.9)",
+                    "padding": [3, 5],
+                    "formatter": "Média: {c}"
+                },
                 "data": [{"type": "average", "name": "Média"}]
             }
 
