@@ -69,6 +69,7 @@ VARS = {
     "PowerBattery_com": ("Potência da bateria", "W"),
     "PowerBSG_com": ("Potência BSG", "W"),
     "Energia_liquida_Wh": ("Energia líquida acumulada", "Wh"),
+    "TorqueBSG_com": ("Torque do BSG", "Wh"),
 }
 
 # KPIs escalares dos arquivos (sufixo -> (rótulo, unidade))
