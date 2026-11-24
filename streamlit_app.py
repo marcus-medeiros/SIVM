@@ -531,7 +531,7 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
                      tipo_marcador="pin"):
     """
     Velocidade × variável com visualização dos modos, sombreado, faixa,
-    linha colorida e marcadores configuráveis.
+    linha colorida e valores de máximo, mínimo e média.
     """
     vel = get_serie(dados, f"{prefixo}Speed_com")
     dire = get_serie(dados, f"{prefixo}{sufixo_dir}")
@@ -614,19 +614,20 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
                 }
             })
 
-    # Configuração comum dos marcadores
+    # Configuração dos rótulos sem símbolos visíveis
     config_marcador = {
-        "symbol": tipo_marcador,
-        "symbolSize": 42,
+        "symbol": "circle",
+        "symbolSize": 1,
+        "itemStyle": {"opacity": 0},
         "label": {
             "show": True,
-            "position": "inside",
+            "position": "top",
+            "distance": 8,
             "fontSize": 10,
             "fontWeight": "bold",
-            "color": "#fff",
-            "formatter": js(
-                "function(p){return p.name + ': ' + Number(p.value).toFixed(1).replace('.', ',');}"
-            )
+            "backgroundColor": "rgba(255,255,255,0.90)",
+            "padding": [3, 5],
+            "borderRadius": 3
         }
     }
 
@@ -644,6 +645,13 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
     if mostrar_max:
         serie_vel["markPoint"] = {
             **config_marcador,
+            "label": {
+                **config_marcador["label"],
+                "color": COR_VEL,
+                "formatter": js(
+                    "function(p){return 'Máx: ' + Number(p.value).toFixed(1).replace('.', ',');}"
+                )
+            },
             "data": [{"type": "max", "name": "Máx"}]
         }
 
@@ -681,6 +689,13 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
     if pontos:
         serie_dir["markPoint"] = {
             **config_marcador,
+            "label": {
+                **config_marcador["label"],
+                "color": COR_VAR,
+                "formatter": js(
+                    "function(p){return p.name + ': ' + Number(p.value).toFixed(1).replace('.', ',');}"
+                )
+            },
             "data": pontos
         }
 
@@ -688,7 +703,14 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
         serie_dir["markLine"] = {
             "silent": True, "symbol": "none",
             "lineStyle": {"type": "dashed", "color": COR_VAR},
-            "label": {"show": True, "formatter": "Média: {c}"},
+            "label": {
+                "show": True,
+                "color": COR_VAR,
+                "fontSize": 10,
+                "backgroundColor": "rgba(255,255,255,0.90)",
+                "padding": [3, 5],
+                "formatter": "Média: {c}"
+            },
             "data": [{"type": "average", "name": "Média"}]
         }
 
