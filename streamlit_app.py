@@ -1329,6 +1329,7 @@ def painel_telemetria(arquivo, prefixo, nome_ciclo, chave):
                                  default=[m["nome"] for m in MODOS], key=f"{chave}_msel")
             modos_idx = [i for i, m in enumerate(MODOS, start=1) if m["nome"] in sel]
             vel = get_serie(dados, f"{prefixo}Speed_com")
+            c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
             tmax = (len(vel) if vel is not None else 0) * DT_AMOSTRAGEM
             mostrar_max = c1.checkbox("Máx. Velocidade", True, key=f"tmp_{chave}_max")
             mostrar_min = c2.checkbox("Min/Máx. Var. Sel.", True, key=f"tmp_{chave}_min")
@@ -1350,6 +1351,7 @@ def painel_telemetria(arquivo, prefixo, nome_ciclo, chave):
                     t1 = p1.number_input("Fim do transiente a frio (s)", 0.0, 5000.0, 505.0, 1.0, key=f"{chave}_f1")
                     t2 = p2.number_input("Fim da fase estabilizada (s)", 0.0, 5000.0, 1372.0, 1.0, key=f"{chave}_f2")
                     fases = [("Fim transiente a frio", t1), ("Fim fase estabilizada", t2)]
+                    
             grafico_temporal(dados, prefixo, sufixo, arquivo.name, f"{chave}_temporal",
                  estilo, modos_idx, janela, eixo, fases,
                  mostrar_max, mostrar_min, mostrar_media, tipo_marcador)
