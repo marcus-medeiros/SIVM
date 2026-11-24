@@ -587,6 +587,7 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
             }
     
             # Sombreado abaixo da curva de velocidade
+            #
             if sombra:
                 vel_sombra = np.where(modos[sl] == k, vel[sl], np.nan)
                 series.append({
@@ -594,7 +595,8 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
                     "xAxisIndex": 0, "yAxisIndex": 0,
                     "data": to_pts(x[sl], vel_sombra),
                     "showSymbol": False, "connectNulls": False,
-                    "lineStyle": {"opacity": 0},
+                    "lineStyle": {"color": m["cor"], "opacity": 0},
+                    "itemStyle": {"color": m["cor"]},
                     "areaStyle": {"color": m["cor"], "opacity": 0.30},
                     "silent": True, "tooltip": {"show": False}, "z": 1
                 })
