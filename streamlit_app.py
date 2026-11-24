@@ -1993,14 +1993,14 @@ def exibir_graficos_modos(arquivos, prefixo, chave):
     if any(v is not None for lst in pcts.values() for v in lst):
         st.subheader("Distribuição percentual dos modos operacionais")
         barras_agrupadas(nomes, pcts, cores, "Percentual por modo operacional",
-                         "Comparação entre os arquivos analisados", "Participação (%)", f"comp_pct_{chave}")
+                         "Análise - ITEMM", "Participação (%)", f"comp_pct_{chave}")
     else:
         st.warning("Não foram encontrados dados de percentual dos modos operacionais.")
     if any(v is not None for lst in caps.values() for v in lst):
         st.divider()
         st.subheader("Capacidade elétrica por modo operacional")
         barras_agrupadas(nomes, caps, cores, "Capacidade por modo operacional",
-                         "Comparação das capacidades dos arquivos analisados", "Capacidade (Ah)", f"comp_cap_{chave}")
+                         "Análise de dados - ITEMM", "Capacidade (Ah)", f"comp_cap_{chave}")
     else:
         st.warning("Não foram encontrados dados de capacidade dos modos operacionais.")
     st.caption("Percentuais e capacidades são indicadores globais extraídos dos arquivos MAT; "
