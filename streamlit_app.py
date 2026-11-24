@@ -1330,6 +1330,15 @@ def painel_telemetria(arquivo, prefixo, nome_ciclo, chave):
             modos_idx = [i for i, m in enumerate(MODOS, start=1) if m["nome"] in sel]
             vel = get_serie(dados, f"{prefixo}Speed_com")
             tmax = (len(vel) if vel is not None else 0) * DT_AMOSTRAGEM
+            mostrar_max = c1.checkbox("Máx. Velocidade", True, key=f"tmp_{chave}_max")
+            mostrar_min = c2.checkbox("Min/Máx. Var. Sel.", True, key=f"tmp_{chave}_min")
+            mostrar_media = c3.checkbox("Média", True, key=f"tmp_{chave}_media")
+            
+            simbolos = {"pin": "Alfinete", "circle": "Círculo", "rect": "Retângulo",
+                        "triangle": "Triângulo", "diamond": "Losango"}
+            tipo_marcador = c4.selectbox("Tipo do marcador:", list(simbolos.keys()),
+                                         format_func=lambda x: simbolos[x], key=f"tmp_{chave}_simbolo")
+            
             janela = None
             if tmax > 10:
                 janela = st.slider("Janela de tempo (s)", 0.0, float(tmax), (0.0, float(tmax)),
