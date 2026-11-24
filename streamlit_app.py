@@ -617,8 +617,7 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
     # Configuração dos rótulos sem símbolos visíveis
     config_marcador = {
         "symbol": "circle",
-        "symbolSize": 1,
-        "itemStyle": {"opacity": 0},
+        "symbolSize": 2,
         "label": {
             "show": True,
             "position": "top",
@@ -641,15 +640,16 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
         "lineStyle": {"color": COR_VEL, "width": 2.5},
         "itemStyle": {"color": COR_VEL}
     }
-
+    #
     if mostrar_max:
         serie_vel["markPoint"] = {
             **config_marcador,
+            "itemStyle": {"color": COR_VEL},
             "label": {
                 **config_marcador["label"],
                 "color": COR_VEL,
                 "formatter": js(
-                    "function(p){return 'Máx: ' + Number(p.value).toFixed(1).replace('.', ',');}"
+                    "function(p){return p.name + ': ' + Number(p.value).toFixed(1).replace('.', ',');}"
                 )
             },
             "data": [{"type": "max", "name": "Máx"}]
@@ -689,6 +689,7 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
     if pontos:
         serie_dir["markPoint"] = {
             **config_marcador,
+            "itemStyle": {"color": COR_VAR},
             "label": {
                 **config_marcador["label"],
                 "color": COR_VAR,
@@ -696,7 +697,10 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
                     "function(p){return p.name + ': ' + Number(p.value).toFixed(1).replace('.', ',');}"
                 )
             },
-            "data": pontos
+            "data": [
+                {"type": "max", "name": "Máx", "label": {"position": "top"}},
+                {"type": "min", "name": "Mín", "label": {"position": "bottom"}}
+            ]
         }
 
     if mostrar_media:
