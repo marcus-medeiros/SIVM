@@ -1342,14 +1342,7 @@ def painel_telemetria(arquivo, prefixo, nome_ciclo, chave):
             if tmax > 10:
                 janela = st.slider("Janela de tempo (s)", 0.0, float(tmax), (0.0, float(tmax)),
                                    step=1.0, key=f"{chave}_janela")
-            fases = None
-            if prefixo == "f":
-                if st.checkbox("Mostrar fases do FTP", key=f"{chave}_fases"):
-                    p1, p2 = st.columns(2)
-                    t1 = p1.number_input("Fim do transiente a frio (s)", 0.0, 5000.0, 505.0, 1.0, key=f"{chave}_f1")
-                    t2 = p2.number_input("Fim da fase estabilizada (s)", 0.0, 5000.0, 1372.0, 1.0, key=f"{chave}_f2")
-                    fases = [("Fim transiente a frio", t1), ("Fim fase estabilizada", t2)]
-                    
+            fases = None                 
             grafico_temporal(dados, prefixo, sufixo, arquivo.name, f"{chave}_temporal",
                  estilo, modos_idx, janela, eixo, fases,
                  mostrar_max, mostrar_min, mostrar_media, tipo_marcador)
@@ -2052,10 +2045,7 @@ def exibir_comparacao_temporal(arquivos, prefixo, chave):
     mostrar_min = c2.checkbox("Min/Máx. Var. Sel.", True, key=f"tmp_{chave}_min")
     mostrar_media = c3.checkbox("Média", True, key=f"tmp_{chave}_media")
     
-    simbolos = {"pin": "Alfinete", "circle": "Círculo", "rect": "Retângulo",
-                "triangle": "Triângulo", "diamond": "Losango"}
-    tipo_marcador = c4.selectbox("Tipo do marcador:", list(simbolos.keys()),
-                                 format_func=lambda x: simbolos[x], key=f"tmp_{chave}_simbolo")
+    tipo_marcador = "pin"
     fases = [("Fim transiente a frio", 505.0), ("Fim fase estabilizada", 1372.0)] \
         if prefixo == "f" and st.checkbox("Mostrar fases do FTP (505 s / 1372 s)", key=f"tmp_fases_{chave}") else None
     st.markdown("#### Primeiro ensaio")
