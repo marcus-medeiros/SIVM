@@ -1958,7 +1958,7 @@ def grafico_boxplot_arquivos(df_var, variavel, subtitulo, chave):
              "formatter": js("function(p){return 'Média: ' + Number(p.value[1]).toFixed(2).replace('.', ',');}")},
              "z": 11},
         ],
-    }, "460px", chave)
+    }, "500px", chave)
 
 
 def exibir_kpis_e_delta(arquivos, prefixo, chave):
