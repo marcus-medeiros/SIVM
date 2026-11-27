@@ -1156,7 +1156,7 @@ def grafico_ranking_estatisticas(df_var, variavel, subtitulo, chave):
             "splitLine": {"show": True, "lineStyle": {"type": "dashed"}},
         },
         "series": series,
-    }, "480px", chave)
+    }, "420px", chave)
 
 def matriz_transicoes(modos: np.ndarray) -> np.ndarray:
     seq = modos[modos > 0]
@@ -1958,7 +1958,7 @@ def grafico_boxplot_arquivos(df_var, variavel, subtitulo, chave):
              "formatter": js("function(p){return 'Média: ' + Number(p.value[1]).toFixed(2).replace('.', ',');}")},
              "z": 11},
         ],
-    }, "560px", chave)
+    }, "460px", chave)
 
 
 def exibir_kpis_e_delta(arquivos, prefixo, chave):
