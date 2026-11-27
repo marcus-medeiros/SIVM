@@ -2005,8 +2005,6 @@ def exibir_graficos_modos(arquivos, prefixo, chave):
     if any(v is not None for lst in pcts.values() for v in lst):
         st.subheader("Distribuição percentual dos modos operacionais")
         barras_percentuais_empilhadas(nomes, pcts, cores,  "Análise - ITEMM", "Participação (%)", f"comp_pct_{chave}")
-        #barras_agrupadas(nomes, pcts, cores, "Percentual por modo operacional",
-                         "Análise - ITEMM", "Participação (%)", f"comp_pct_{chave}")
     else:
         st.warning("Não foram encontrados dados de percentual dos modos operacionais.")
     if any(v is not None for lst in caps.values() for v in lst):
