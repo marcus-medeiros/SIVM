@@ -429,6 +429,32 @@ def barras_agrupadas(categorias, series_dict, cores, titulo, subtitulo, unidade,
     }
     grafico(opcoes, "500px", chave)
 
+def barras_percentuais_empilhadas(categorias, series_dict, cores, titulo, subtitulo, chave):
+    series = []
+    for nome, valores in series_dict.items():
+        series.append({
+            "name": nome, "type": "bar", "stack": "total", "barWidth": "60%",
+            "itemStyle": {"color": cores[nome], "borderColor": "#333", "borderWidth": 0.5},
+            "label": {
+                "show": True, "position": "inside", "color": "#fff", "fontWeight": "bold", "fontSize": 10,
+                "formatter": js("function(p) { return p.value < 3 ? '' : Number(p.value).toFixed(1).replace('.', ',') + '%'; }")
+            },
+            "data": [None if v is None else round(float(v), 2) for v in valores]
+        })
+
+    opcoes = {
+        "title": {"text": titulo, "subtext": subtitulo, "left": "center", "top": "2%", "textStyle": {"fontSize": 16}},
+        "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"},
+                    "valueFormatter": js("function(v) { return Number(v).toFixed(2).replace('.', ',') + '%'; }")},
+        "legend": {"top": "14%", "selectedMode": False, "data": list(series_dict.keys())},
+        "grid": {"left": "8%", "right": "5%", "bottom": "22%", "top": "26%", "containLabel": True},
+        "xAxis": {"type": "category", "data": categorias, "axisLabel": {"rotate": 35, "interval": 0, "fontSize": 9}},
+        "yAxis": {"type": "value", "min": 0, "max": 100, "name": "Participação (%)",
+                 "axisLabel": {"formatter": "{value}%"}, "splitLine": {"show": True, "lineStyle": {"type": "dashed"}}},
+        "series": series
+    }
+    
+    grafico(opcoes, "500px", chave)
 
 # =======================================================================
 # 5. GRÁFICOS TEMPORAIS
@@ -1978,7 +2004,8 @@ def exibir_graficos_modos(arquivos, prefixo, chave):
     cores = {m["nome"]: m["cor"] for m in MODOS}
     if any(v is not None for lst in pcts.values() for v in lst):
         st.subheader("Distribuição percentual dos modos operacionais")
-        barras_agrupadas(nomes, pcts, cores, "Percentual por modo operacional",
+        barras_percentuais_empilhadas(nomes, pcts, cores,  "Análise - ITEMM", "Participação (%)", f"comp_pct_{chave}")
+        #barras_agrupadas(nomes, pcts, cores, "Percentual por modo operacional",
                          "Análise - ITEMM", "Participação (%)", f"comp_pct_{chave}")
     else:
         st.warning("Não foram encontrados dados de percentual dos modos operacionais.")
