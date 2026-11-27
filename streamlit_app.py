@@ -2194,6 +2194,24 @@ def pagina_mhev(arquivo_1, arquivo_2, pagina):
         renderizar_comparacao_arquivos()
 
 
+PAGINAS_MHEV = {
+    "Telemetria":     ("📈 Telemetria",     "graph-up"),
+    "Estatística":    ("📊 Estatística",    "bar-chart"),
+    "Análise":        ("📉 Análise",        "clipboard-data"),
+    "Eventos & KPIs": ("🧩 Eventos & KPIs", "lightning-charge"),
+    "Correlações":    ("🔗 Correlações",    "diagram-3"),
+    "Comparação":     ("⚖️ Comparação",     "arrow-left-right"),
+}
+
+ESTILO_MENU = {
+    "container": {"padding": "0", "background-color": "transparent"},
+    "icon": {"font-size": "16px"},
+    "nav-link": {"font-size": "15px", "text-align": "left", "margin": "2px 0",
+                 "border-radius": "8px", "--hover-color": "rgba(206,69,69,0.12)"},
+    "nav-link-selected": {"background-color": "#ce4545", "color": "white", "font-weight": "600"},
+}
+
+
 def main_app():
     arquivo_1 = arquivo_2 = None
     pagina = None
@@ -2202,14 +2220,25 @@ def main_app():
         st.markdown("<h2 style='color:#ce4545; text-align:center;'>- LOBOS ELETRIFICADOS -</h2>",
                     unsafe_allow_html=True)
 
-        # Menu principal
-        menu = st.radio("Menu", ["MHEV", "IBS"], horizontal=True, key="menu_principal")
+        # Menu principal (abas horizontais)
+        menu = option_menu(
+            None, ["MHEV", "IBS"],
+            icons=["car-front", "cpu"],
+            orientation="horizontal",
+            key="menu_principal",
+            styles={**ESTILO_MENU, "nav-link": {**ESTILO_MENU["nav-link"], "text-align": "center"}},
+        )
         st.markdown("---")
 
         if menu == "MHEV":
-            pagina = st.radio("Navegação", ["📈 Telemetria", "📊 Estatística", "📉 Análise",
-                                            "🧩 Eventos & KPIs", "🔗 Correlações", "⚖️ Comparação"],
-                              key="nav_mhev")
+            escolha = option_menu(
+                None, list(PAGINAS_MHEV.keys()),
+                icons=[v[1] for v in PAGINAS_MHEV.values()],
+                key="nav_mhev",
+                styles=ESTILO_MENU,
+            )
+            pagina = PAGINAS_MHEV[escolha][0]   # mantém os rótulos que pagina_mhev espera
+
             st.markdown("---")
             st.markdown("### 📂 Upload de Arquivos .mat")
             arquivo_1 = st.file_uploader("Arquivo FTP (.mat)", type=["mat"], key="file1")
