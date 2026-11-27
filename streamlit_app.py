@@ -1095,6 +1095,62 @@ def tabela_eventos(dados, prefixo) -> pd.DataFrame:
     df = pd.DataFrame(linhas)
     return df.sort_values("Início (s)").reset_index(drop=True) if not df.empty else df
 
+def grafico_ranking_estatisticas(df_var, variavel, subtitulo, chave):
+    if len(df_var) < 2:
+        st.info("O ranking requer pelo menos duas amostras.")
+        return
+
+    nomes = df_var["Arquivo"].tolist()
+    configuracoes = [
+        ("Máximo", COR_REGEN),
+        ("Mínimo", COR_BOOST),
+        ("Média", COR_ALTERNADOR),
+    ]
+
+    series = []
+    for nome, cor in configuracoes:
+        valores = pd.to_numeric(df_var[nome], errors="coerce")
+        ranking = valores.rank(ascending=False, method="min")
+        series.append({
+            "name": nome, "type": "line", "smooth": True, "symbol": "circle",
+            "symbolSize": 9, "emphasis": {"focus": "series"},
+            "lineStyle": {"width": 3, "color": cor},
+            "itemStyle": {"color": cor},
+            "data": [None if pd.isna(v) else int(v) for v in ranking],
+        })
+
+    grafico({
+        "title": {"text": f"Ranking — {variavel}", "subtext": subtitulo,
+                  "left": "center", "top": "2%"},
+        "tooltip": {
+            "trigger": "axis",
+            "formatter": js("""
+                function(params) {
+                    let r = '<b>' + params[0].axisValue + '</b><br/>';
+                    params.forEach(function(p) {
+                        if (p.value != null)
+                            r += p.marker + p.seriesName + ': <b>#' +
+                                 p.value + '</b><br/>';
+                    });
+                    return r;
+                }
+            """),
+        },
+        "legend": {"top": "12%", "data": ["Máximo", "Mínimo", "Média"]},
+        "grid": {"left": "8%", "right": "8%", "bottom": "25%", "top": "23%", "containLabel": True},
+        "xAxis": {
+            "type": "category", "boundaryGap": False, "data": nomes,
+            "splitLine": {"show": True},
+            "axisLabel": {"rotate": 35, "interval": 0, "fontSize": 9},
+        },
+        "yAxis": {
+            "type": "value", "inverse": True, "min": 1, "max": len(nomes),
+            "interval": 1,
+            "axisLabel": {"formatter": "#{value}"},
+            "splitLine": {"show": True, "lineStyle": {"type": "dashed"}},
+        },
+        "series": series,
+    }, "480px", chave)
 
 def matriz_transicoes(modos: np.ndarray) -> np.ndarray:
     seq = modos[modos > 0]
@@ -2093,6 +2149,16 @@ def bloco_comparacao(rotulo, arquivos, prefixo, chave):
             grafico_boxplot_arquivos(df[df["Variável"] == var].reset_index(drop=True),
                                      rotulo_var(var) if var in VARS else var, f"{rotulo} — {cond_nome}",
                                      f"comp_box_{chave}")
+
+            st.divider()
+            st.subheader("Ranking entre amostras")
+            grafico_ranking_estatisticas(
+                df[df["Variável"] == var].reset_index(drop=True),
+                rotulo_var(var) if var in VARS else var,
+                f"{rotulo} — {cond_nome}",
+                f"comp_rank_{chave}"
+            )
+            
     with t_kpi:
         exibir_kpis_e_delta(arquivos, prefixo, chave)
     with t_modos:
