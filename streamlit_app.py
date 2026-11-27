@@ -214,26 +214,7 @@ def segmentos(mascara: np.ndarray):
     return np.flatnonzero(d == 1), np.flatnonzero(d == -1)
 
 
-def mascara_filtro(dados: dict, prefixo: str, n: int) -> np.ndarray:
-    """Filtro global de velocidade definido na barra lateral."""
-    mask = np.ones(n, dtype=bool)
-    lo, hi = st.session_state.get("filtro_vel", (0, 200))
-    if lo <= 0 and hi >= 200:
-        return mask
-    vel = get_serie(dados, f"{prefixo}Speed_com")
-    if vel is None:
-        return mask
-    k = min(n, len(vel))
-    mask[:k] = (vel[:k] >= lo) & (vel[:k] <= (hi if hi < 200 else np.inf))
-    mask[k:] = False
-    return mask
-
-
-def extrair(dados, prefixo, nomes, cod=None, com_modos=False, filtrar=True):
-    """
-    Séries alinhadas, apenas amostras finitas, na condição `cod` (ou todas)
-    e dentro do filtro global. Se com_modos=True, acrescenta o vetor de modos.
-    """
+def extrair(dados, prefixo, nomes, cod=None, com_modos=False):
     vazio = [np.array([])] * (len(nomes) + (1 if com_modos else 0))
     arrs = [get_serie(dados, nm) for nm in nomes]
     if any(a is None for a in arrs):
@@ -250,13 +231,10 @@ def extrair(dados, prefixo, nomes, cod=None, com_modos=False, filtrar=True):
         mask &= np.isfinite(a[:n])
     if cond is not None:
         mask &= np.isfinite(cond[:n]) & (cond[:n] > 0)
-    if filtrar:
-        mask &= mascara_filtro(dados, prefixo, n)
     saida = [a[:n][mask] for a in arrs]
     if com_modos:
         saida.append(vetor_modos(dados, prefixo, n)[mask])
     return saida
-
 
 def to_pts(x, y, extra=None):
     """Pares [x, y(, extra)] serializáveis, com NaN -> None."""
@@ -2230,10 +2208,6 @@ def main_app():
             arquivo_1 = st.file_uploader("Arquivo FTP (.mat)", type=["mat"], key="file1")
             arquivo_2 = st.file_uploader("Arquivo Highway (.mat)", type=["mat"], key="file2")
             st.markdown("---")
-            st.markdown("### 🎛️ Filtros e exibição")
-            st.slider("Faixa de velocidade (km/h)", 0, 200, (0, 200), key="filtro_vel",
-                      help="Aplicado às páginas Estatística, Correlações. O limite máximo de 200 significa sem limite superior.")
-            st.info(f"⏱️ **Passo de Amostragem:** fixo em `{DT_AMOSTRAGEM} s`")
         else:
             st.markdown("### 🎛️ Exibição")
 
