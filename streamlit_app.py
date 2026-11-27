@@ -802,7 +802,7 @@ def grafico_temporal(dados, prefixo, sufixo_dir, subtitulo, chave, estilo=ESTILO
         "axisPointer": {"link": [{"xAxisIndex": "all"}]},
         "legend": {
             "type": "scroll",
-            "icon": "rect",
+            "icon": "roundRect",
             "itemWidth": 18,
             "itemHeight": 8,
             "itemGap": 14,
