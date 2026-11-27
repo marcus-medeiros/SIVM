@@ -1985,8 +1985,13 @@ def grafico_boxplot_arquivos(df_var, variavel, subtitulo, chave,
             {"name": "Mínimo", "type": "scatter", "data": minimos, "symbolSize": 10,
              "itemStyle": {"color": COR_VEL},
              "label": {"show": True, "position": "left", "distance": 10, "fontSize": 12,
-                       "formatter": js("function(p){return 'Mín: ' + Number(p.value[1]).toFixed(2).replace('.', ',');}")},
-             "z": 10},
+                        "formatter": js(f"""
+                        function(p){{
+                            return '#' + {rank_media}[p.dataIndex] +
+                                   ' Média: ' +
+                                   Number(p.value[1]).toFixed(2).replace('.', ',');
+                        }}
+                        """)
     
             {"name": "Máximo", "type": "scatter", "data": maximos, "symbolSize": 10,
              "itemStyle": {"color": COR_REGEN},
