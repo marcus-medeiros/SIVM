@@ -1102,11 +1102,10 @@ def grafico_ranking_estatisticas(df_var, variavel, subtitulo, chave):
 
     nomes = df_var["Arquivo"].tolist()
     configuracoes = [
-        ("Máximo", COR_REGEN),
-        ("Mínimo", COR_BOOST),
-        ("Média", COR_ALTERNADOR),
+        ("Máximo", "#702082"),
+        ("Mínimo", "#c9b3d6"),
+        ("Média", "#f39200"),
     ]
-
     series = []
     for nome, cor in configuracoes:
         valores = pd.to_numeric(df_var[nome], errors="coerce")
