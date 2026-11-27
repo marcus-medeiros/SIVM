@@ -433,7 +433,7 @@ def barras_percentuais_empilhadas(categorias, series_dict, cores, titulo, subtit
     series = []
     for nome, valores in series_dict.items():
         series.append({
-            "name": nome, "type": "bar", "stack": "total", "barWidth": "35%",
+            "name": nome, "type": "bar", "stack": "total", "barWidth": "40%",
             "itemStyle": {"color": cores[nome], "borderColor": "#333", "borderWidth": 0.5},
             "label": {
                 "show": True, "position": "inside", "color": "#fff", "fontWeight": "bold", "fontSize": 10,
