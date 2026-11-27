@@ -2194,9 +2194,23 @@ def bloco_comparacao(rotulo, arquivos, prefixo, chave):
             variaveis = sorted(df["Variável"].unique().tolist())
             var = st.selectbox("Variável para comparar:", variaveis, key=f"comp_var_{chave}",
                                format_func=lambda s: rotulo_var(s, False) if s in VARS else s)
-            mostrar_linha_media = st.checkbox("Linha da Média", value=True)
-            mostrar_linha_min = st.checkbox("Linha do Mínimo", value=False)
-            mostrar_linha_max = st.checkbox("Linha do Máximo", value=False)
+            mostrar_linha_media = st.checkbox(
+                "Linha da Média",
+                value=True,
+                key=f"linha_media_{chave}"
+            )
+            
+            mostrar_linha_min = st.checkbox(
+                "Linha do Mínimo",
+                value=False,
+                key=f"linha_min_{chave}"
+            )
+            
+            mostrar_linha_max = st.checkbox(
+                "Linha do Máximo",
+                value=False,
+                key=f"linha_max_{chave}"
+            )
             
             grafico_boxplot_arquivos(
                 df[df["Variável"] == var].reset_index(drop=True),
