@@ -1926,17 +1926,72 @@ def tabela_estatistica(arquivos, prefixo, cod):
     return pd.DataFrame(registros)
 
 
-def grafico_boxplot_arquivos(df_var, variavel, subtitulo, chave):
+def grafico_boxplot_arquivos(df_var, variavel, subtitulo, chave,
+                             mostrar_linha_media=True,
+                             mostrar_linha_min=False,
+                             mostrar_linha_max=False):
     nomes = df_var["Arquivo"].tolist()
     caixas = [[round(r["Mínimo"], 3), round(r["P25"], 3), round(r["Mediana"], 3),
                round(r["P75"], 3), round(r["Máximo"], 3)] for _, r in df_var.iterrows()]
     minimos = [[i, round(r["Mínimo"], 3)] for i, (_, r) in enumerate(df_var.iterrows())]
     maximos = [[i, round(r["Máximo"], 3)] for i, (_, r) in enumerate(df_var.iterrows())]
     medias = [[i, round(r["Média"], 3)] for i, (_, r) in enumerate(df_var.iterrows())]
+
+    series = [
+        {"name": "Distribuição", "type": "boxplot", "data": caixas,
+         "itemStyle": {"color": "#c9b3d6", "borderColor": COR_BOOST}}
+    ]
+    if mostrar_linha_media:
+        series.append({
+            "name": "Linha Média", "type": "line",
+            "data": [round(r["Média"], 3) for _, r in df_var.iterrows()],
+            "symbol": "circle", "symbolSize": 8,
+            "lineStyle": {"color": COR_ALTERNADOR, "width": 2},
+            "itemStyle": {"color": COR_ALTERNADOR},
+            "z": 9
+        })
+    if mostrar_linha_min:
+        series.append({
+            "name": "Linha Mínimo", "type": "line",
+            "data": [round(r["Mínimo"], 3) for _, r in df_var.iterrows()],
+            "symbol": "circle", "symbolSize": 8,
+            "lineStyle": {"color": COR_VEL, "width": 2},
+            "itemStyle": {"color": COR_VEL},
+            "z": 9
+        })
+    if mostrar_linha_max:
+        series.append({
+            "name": "Linha Máximo", "type": "line",
+            "data": [round(r["Máximo"], 3) for _, r in df_var.iterrows()],
+            "symbol": "circle", "symbolSize": 8,
+            "lineStyle": {"color": COR_REGEN, "width": 2},
+            "itemStyle": {"color": COR_REGEN},
+            "z": 9
+        })
+    series.extend([
+        {"name": "Mínimo", "type": "scatter", "data": minimos, "symbolSize": 10,
+         "itemStyle": {"color": COR_VEL},
+         "label": {"show": True, "position": "left", "distance": 10, "fontSize": 12,
+                   "formatter": js("function(p){return 'Mín: ' + Number(p.value[1]).toFixed(2).replace('.', ',');}")},
+         "z": 10},
+
+        {"name": "Máximo", "type": "scatter", "data": maximos, "symbolSize": 10,
+         "itemStyle": {"color": COR_REGEN},
+         "label": {"show": True, "position": "top", "fontSize": 12,
+                   "formatter": js("function(p){return 'Máx: ' + Number(p.value[1]).toFixed(2).replace('.', ',');}")},
+         "z": 10},
+
+        {"name": "Média", "type": "scatter", "data": medias, "symbolSize": 10,
+         "itemStyle": {"color": COR_ALTERNADOR, "borderColor": "#fff"},
+         "label": {"show": True, "position": "right", "fontSize": 12,
+                   "formatter": js("function(p){return 'Média: ' + Number(p.value[1]).toFixed(2).replace('.', ',');}")},
+         "z": 11}
+    ])
     grafico({
         "title": {"text": f"Comparação de {variavel}",
                   "subtext": subtitulo + " | hastes: mín–máx, caixa: P25–P75, pontos: mín, máx e média",
-                  "left": "center", "top": "2%", "textStyle": {"fontSize": 17, "fontWeight": "bold"},
+                  "left": "center", "top": "2%",
+                  "textStyle": {"fontSize": 17, "fontWeight": "bold"},
                   "subtextStyle": {"fontSize": 11, "color": "#757575"}},
         "tooltip": {"trigger": "item"},
         "grid": {"left": "10%", "right": "6%", "bottom": "30%", "top": "24%", "containLabel": True},
@@ -1944,31 +1999,7 @@ def grafico_boxplot_arquivos(df_var, variavel, subtitulo, chave):
                   "axisLabel": {"rotate": 35, "interval": 0, "fontSize": 9}},
         "yAxis": {"type": "value", "name": variavel, "scale": True,
                   "splitLine": {"show": False}},
-        "series": [
-            {"name": "Distribuição", "type": "boxplot", "data": caixas,
-             "itemStyle": {"color": "#c9b3d6", "borderColor": COR_BOOST}},
-            {"name": "Linha Média", "type": "line",
-             "data": [round(r["Média"], 3) for _, r in df_var.iterrows()],
-             "symbol": "circle", "symbolSize": 8,
-             "lineStyle": {"color": COR_ALTERNADOR, "width": 2},
-             "itemStyle": {"color": COR_ALTERNADOR},
-             "z": 9},
-            {"name": "Mínimo", "type": "scatter", "data": minimos, "symbolSize": 10,
-             "itemStyle": {"color": COR_VEL},
-             "label": {"show": True, "position": "left", "distance": 10, "fontSize": 12,
-                       "formatter": js("function(p){return 'Mín: ' + Number(p.value[1]).toFixed(2).replace('.', ',');}")},
-             "z": 10},
-            {"name": "Máximo", "type": "scatter", "data": maximos, "symbolSize": 10,
-             "itemStyle": {"color": COR_REGEN},
-             "label": {"show": True, "position": "top", "fontSize": 12,
-                       "formatter": js("function(p){return 'Máx: ' + Number(p.value[1]).toFixed(2).replace('.', ',');}")},
-             "z": 10},
-            {"name": "Média", "type": "scatter", "data": medias, "symbolSize": 10,
-             "itemStyle": {"color": COR_ALTERNADOR, "borderColor": "#fff"},
-             "label": {"show": True, "position": "right", "fontSize": 12,
-                       "formatter": js("function(p){return 'Média: ' + Number(p.value[1]).toFixed(2).replace('.', ',');}")},
-             "z": 11}
-        ],
+        "series": series
     }, "600px", chave)
 
 
@@ -2163,7 +2194,18 @@ def bloco_comparacao(rotulo, arquivos, prefixo, chave):
             variaveis = sorted(df["Variável"].unique().tolist())
             var = st.selectbox("Variável para comparar:", variaveis, key=f"comp_var_{chave}",
                                format_func=lambda s: rotulo_var(s, False) if s in VARS else s)
-            grafico_boxplot_arquivos(df[df["Variável"] == var].reset_index(drop=True),
+            mostrar_linha_media = st.checkbox("Linha da Média", value=True)
+            mostrar_linha_min = st.checkbox("Linha do Mínimo", value=False)
+            mostrar_linha_max = st.checkbox("Linha do Máximo", value=False)
+            
+            grafico_boxplot_arquivos(
+                df_var, variavel, subtitulo, chave,
+                mostrar_linha_media,
+                mostrar_linha_min,
+                mostrar_linha_max
+            )
+
+            # grafico_boxplot_arquivos(df[df["Variável"] == var].reset_index(drop=True),
                                      rotulo_var(var) if var in VARS else var, f"{rotulo} — {cond_nome}",
                                      f"comp_box_{chave}")
             grafico_ranking_estatisticas(
