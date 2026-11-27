@@ -1949,74 +1949,122 @@ def grafico_boxplot_arquivos(df_var, variavel, subtitulo, chave,
     
     medias = [[i, round(r["Média"], 3), rank_media[i]]
               for i, (_, r) in enumerate(df_var.iterrows())]                     
-
     series = [
-        {"name": "Distribuição", "type": "boxplot", "data": caixas,
-         "itemStyle": {"color": "#c9b3d6", "borderColor": COR_BOOST}}
+        {
+            "name": "Distribuição",
+            "type": "boxplot",
+            "data": caixas,
+            "itemStyle": {
+                "color": "#c9b3d6",
+                "borderColor": COR_BOOST
+            }
+        }
     ]
+
+    # -----------------------------------------------------
+    # LINHAS (CONTROLE INDEPENDENTE)
+    # -----------------------------------------------------
+
     if mostrar_linha_media:
         series.append({
-            "name": "Linha Média", "type": "line",
+            "name": "Linha Média",
+            "type": "line",
             "data": [round(r["Média"], 3) for _, r in df_var.iterrows()],
-            "symbol": "circle", "symbolSize": 8,
+            "symbol": "none",
             "lineStyle": {"color": COR_ALTERNADOR, "width": 2},
-            "itemStyle": {"color": COR_ALTERNADOR},
             "z": 9
         })
+
     if mostrar_linha_min:
         series.append({
-            "name": "Linha Mínimo", "type": "line",
+            "name": "Linha Mínimo",
+            "type": "line",
             "data": [round(r["Mínimo"], 3) for _, r in df_var.iterrows()],
-            "symbol": "circle", "symbolSize": 8,
+            "symbol": "none",
             "lineStyle": {"color": COR_VEL, "width": 2},
-            "itemStyle": {"color": COR_VEL},
             "z": 9
         })
+
     if mostrar_linha_max:
         series.append({
-            "name": "Linha Máximo", "type": "line",
+            "name": "Linha Máximo",
+            "type": "line",
             "data": [round(r["Máximo"], 3) for _, r in df_var.iterrows()],
-            "symbol": "circle", "symbolSize": 8,
+            "symbol": "none",
             "lineStyle": {"color": COR_REGEN, "width": 2},
-            "itemStyle": {"color": COR_REGEN},
             "z": 9
         })
-        series.extend([
-            {"name": "Mínimo", "type": "scatter", "data": minimos, "symbolSize": 10,
-             "itemStyle": {"color": COR_VEL},
-             "label": {"show": True, "position": "left", "distance": 10, "fontSize": 12,
-                       "formatter": js(f"""
-            function(p){{
-                return 'Mín: ' +
-                       Number(p.value[1]).toFixed(2).replace('.', ',') +
-                       ' (#' + {rank_min}[p.dataIndex] + ')';
-            }}
-            """)},
-             "z": 10},
-            {"name": "Máximo", "type": "scatter", "data": maximos, "symbolSize": 10,
-             "itemStyle": {"color": COR_REGEN},
-             "label": {"show": True, "position": "top", "fontSize": 12,
-                       "formatter": js(f"""
-            function(p){{
-                return 'Máx: ' +
-                       Number(p.value[1]).toFixed(2).replace('.', ',') +
-                       ' (#' + {rank_max}[p.dataIndex] + ')';
-            }}
-            """)},
-             "z": 10},
-    
-            {"name": "Média", "type": "scatter", "data": medias, "symbolSize": 10,
-             "itemStyle": {"color": COR_ALTERNADOR, "borderColor": "#fff"},
-             "label": {"show": True, "position": "right", "fontSize": 12,
-                       "formatter": js(f"""
-            function(p){{
-                return 'Média: ' +
-                       Number(p.value[1]).toFixed(2).replace('.', ',') +
-                       ' (#' + {rank_media}[p.dataIndex] + ')';
-            }}
-            """)},
-             "z": 11}
-        ])
+
+    # -----------------------------------------------------
+    # PONTOS (SEMPRE VISÍVEIS)
+    # -----------------------------------------------------
+
+    series.extend([
+        {
+            "name": "Mínimo",
+            "type": "scatter",
+            "data": minimos,
+            "symbolSize": 10,
+            "itemStyle": {"color": COR_VEL},
+            "label": {
+                "show": True,
+                "position": "left",
+                "distance": 10,
+                "fontSize": 12,
+                "formatter": js(f"""
+                    function(p){{
+                        return 'Mín: ' +
+                               Number(p.value[1]).toFixed(2).replace('.', ',') +
+                               ' (#' + {rank_min}[p.dataIndex] + ')';
+                    }}
+                """)
+            },
+            "z": 10
+        },
+        {
+            "name": "Máximo",
+            "type": "scatter",
+            "data": maximos,
+            "symbolSize": 10,
+            "itemStyle": {"color": COR_REGEN},
+            "label": {
+                "show": True,
+                "position": "top",
+                "fontSize": 12,
+                "formatter": js(f"""
+                    function(p){{
+                        return 'Máx: ' +
+                               Number(p.value[1]).toFixed(2).replace('.', ',') +
+                               ' (#' + {rank_max}[p.dataIndex] + ')';
+                    }}
+                """)
+            },
+            "z": 10
+        },
+        {
+            "name": "Média",
+            "type": "scatter",
+            "data": medias,
+            "symbolSize": 10,
+            "itemStyle": {
+                "color": COR_ALTERNADOR,
+                "borderColor": "#fff"
+            },
+            "label": {
+                "show": True,
+                "position": "right",
+                "fontSize": 12,
+                "formatter": js(f"""
+                    function(p){{
+                        return 'Média: ' +
+                               Number(p.value[1]).toFixed(2).replace('.', ',') +
+                               ' (#' + {rank_media}[p.dataIndex] + ')';
+                    }}
+                """)
+            },
+            "z": 11
+        }
+    ])
     grafico({
         "title": {"text": f"Comparação de {variavel}",
                   "subtext": subtitulo + " | hastes: mín–máx, caixa: P25–P75, pontos: mín, máx e média",
