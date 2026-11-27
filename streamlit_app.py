@@ -2198,12 +2198,15 @@ def bloco_comparacao(rotulo, arquivos, prefixo, chave):
             mostrar_linha_min = st.checkbox("Linha do Mínimo", value=False)
             mostrar_linha_max = st.checkbox("Linha do Máximo", value=False)
             
-            grafico_boxplot_arquivos(df[df["Variável"] == var].reset_index(drop=True),
-                                     rotulo_var(var) if var in VARS else var, f"{rotulo} — {cond_nome}",
-                                     f"comp_box_{chave}",
-                                     mostrar_linha_media=True,
-                                     mostrar_linha_min=False,
-                                     mostrar_linha_max=False)
+            grafico_boxplot_arquivos(
+                df[df["Variável"] == var].reset_index(drop=True),
+                rotulo_var(var) if var in VARS else var,
+                f"{rotulo} — {cond_nome}",
+                f"comp_box_{chave}",
+                mostrar_linha_media=mostrar_linha_media,
+                mostrar_linha_min=mostrar_linha_min,
+                mostrar_linha_max=mostrar_linha_max
+            )
 
             grafico_ranking_estatisticas(
                 df[df["Variável"] == var].reset_index(drop=True),
