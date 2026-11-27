@@ -1336,10 +1336,7 @@ def painel_telemetria(arquivo, prefixo, nome_ciclo, chave):
             mostrar_min = c2.checkbox("Min/Máx. Var. Sel.", True, key=f"tmp_{chave}_min")
             mostrar_media = c3.checkbox("Média", True, key=f"tmp_{chave}_media")
             
-            #simbolos = {"pin": "Alfinete", "circle": "Círculo", "rect": "Retângulo",
-                        "triangle": "Triângulo", "diamond": "Losango"}
-            #tipo_marcador = c4.selectbox("Tipo do marcador:", list(simbolos.keys()),
-                                         format_func=lambda x: simbolos[x], key=f"tmp_{chave}_simbolo")
+            tipo_marcador = "pin"
             
             janela = None
             if tmax > 10:
