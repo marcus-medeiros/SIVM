@@ -1937,9 +1937,9 @@ def grafico_boxplot_arquivos(df_var, variavel, subtitulo, chave,
     maximos = [[i, round(r["Máximo"], 3)] for i, (_, r) in enumerate(df_var.iterrows())]
     medias = [[i, round(r["Média"], 3)] for i, (_, r) in enumerate(df_var.iterrows())]
                                  
-    rank_media = df_var["Média"].rank(method="min", ascending=False).astype(int).tolist()
-    rank_min = df_var["Mínimo"].rank(method="min", ascending=False).astype(int).tolist()
-    rank_max = df_var["Máximo"].rank(method="min", ascending=False).astype(int).tolist()
+    rank_media = df_var["Média"].abs().rank(method="min", ascending=False).astype(int).tolist()
+    rank_min = df_var["Mínimo"].abs().rank(method="min", ascending=False).astype(int).tolist()
+    rank_max = df_var["Máximo"].abs().rank(method="min", ascending=False).astype(int).tolist()
 
     minimos = [[i, round(r["Mínimo"], 3), rank_min[i]]
                for i, (_, r) in enumerate(df_var.iterrows())]
