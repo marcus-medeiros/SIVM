@@ -2139,29 +2139,16 @@ def renderizar_comparacao_arquivos():
         st.info("Selecione pelo menos um arquivo FTP ou Highway para iniciar a comparação.")
 
 
+
 # =======================================================================
 # 13. APLICAÇÃO PRINCIPAL
 # =======================================================================
-def main_app():
-    with st.sidebar:
-        st.markdown("<h2 style='color:#ce4545; text-align:center;'>- LOBOS ELETRIFICADOS -</h2>",
-                    unsafe_allow_html=True)
-        pagina = st.radio("Navegação", ["📈 Telemetria", "📊 Estatística", "📉 Análise",
-                                        "🧩 Eventos & KPIs", "🔗 Correlações", "⚖️ Comparação"])
-        st.markdown("---")
-        st.markdown("### 📂 Upload de Arquivos .mat")
-        arquivo_1 = st.file_uploader("Arquivo FTP (.mat)", type=["mat"], key="file1")
-        arquivo_2 = st.file_uploader("Arquivo Highway (.mat)", type=["mat"], key="file2")
-        st.markdown("---")
-        st.markdown("### 🎛️ Filtros e exibição")
-        st.slider("Faixa de velocidade (km/h)", 0, 200, (0, 200), key="filtro_vel",
-                  help="Aplicado às páginas Estatística, Correlações. O limite máximo de 200 significa sem limite superior.")
-        st.toggle("Gráficos em tema escuro", key="tema_escuro")
-        st.info(f"⏱️ **Passo de Amostragem:** fixo em `{DT_AMOSTRAGEM} s`")
-        if st.button("🚪 Sair", use_container_width=True):
-            st.session_state["authenticated"] = False
-            st.rerun()
+def pagina_ibs():
+    st.title("IBS")
+    st.info("Menu IBS criado. Em breve, novas funcionalidades.")
 
+
+def pagina_mhev(arquivo_1, arquivo_2, pagina):
     if pagina == "📈 Telemetria":
         st.title("Painel de Telemetria Multivariável")
         tab1, tab2 = st.tabs(["📁 Arquivo .MAT 1 (FTP)", "📁 Arquivo .MAT 2 (Highway)"])
@@ -2207,13 +2194,51 @@ def main_app():
         renderizar_comparacao_arquivos()
 
 
-# =======================================================================
-# 14. CONTROLE DE FLUXO
-# =======================================================================
-if __name__ == "__main__":
-    if "authenticated" not in st.session_state:
-        st.session_state["authenticated"] = False
-    if st.session_state["authenticated"]:
-        main_app()
+def main_app():
+    arquivo_1 = arquivo_2 = None
+    pagina = None
+
+    with st.sidebar:
+        st.markdown("<h2 style='color:#ce4545; text-align:center;'>- LOBOS ELETRIFICADOS -</h2>",
+                    unsafe_allow_html=True)
+
+        # Menu principal
+        menu = st.radio("Menu", ["MHEV", "IBS"], horizontal=True, key="menu_principal")
+        st.markdown("---")
+
+        if menu == "MHEV":
+            pagina = st.radio("Navegação", ["📈 Telemetria", "📊 Estatística", "📉 Análise",
+                                            "🧩 Eventos & KPIs", "🔗 Correlações", "⚖️ Comparação"],
+                              key="nav_mhev")
+            st.markdown("---")
+            st.markdown("### 📂 Upload de Arquivos .mat")
+            arquivo_1 = st.file_uploader("Arquivo FTP (.mat)", type=["mat"], key="file1")
+            arquivo_2 = st.file_uploader("Arquivo Highway (.mat)", type=["mat"], key="file2")
+            st.markdown("---")
+            st.markdown("### 🎛️ Filtros e exibição")
+            st.slider("Faixa de velocidade (km/h)", 0, 200, (0, 200), key="filtro_vel",
+                      help="Aplicado às páginas Estatística, Correlações. O limite máximo de 200 significa sem limite superior.")
+            st.info(f"⏱️ **Passo de Amostragem:** fixo em `{DT_AMOSTRAGEM} s`")
+        else:
+            st.markdown("### 🎛️ Exibição")
+
+        st.toggle("Gráficos em tema escuro", key="tema_escuro")
+
+        if st.button("🚪 Sair", use_container_width=True):
+            st.session_state["authenticated"] = False
+            st.rerun()
+
+    if menu == "MHEV":
+        pagina_mhev(arquivo_1, arquivo_2, pagina)
     else:
-        check_login()
+        pagina_ibs()
+# =======================================================================
+# 14. CONTROLE DE FLUXO (final do arquivo)
+# =======================================================================
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
+
+if st.session_state["authenticated"]:
+    main_app()
+else:
+    check_login()
