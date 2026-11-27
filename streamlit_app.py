@@ -1108,8 +1108,9 @@ def grafico_ranking_estatisticas(df_var, variavel, subtitulo, chave):
     ]
     series = []
     for nome, cor in configuracoes:
-        valores = pd.to_numeric(df_var[nome], errors="coerce")
-        ranking = valores.rank(ascending=False, method="min")
+        valores = pd.to_numeric(df_var[coluna], errors="coerce")
+        criterio = valores.abs() if coluna == "Média" else valores
+        ranking = criterio.rank(ascending=False, method="min")
         series.append({
             "name": nome, "type": "line", "smooth": True, "symbol": "circle",
             "symbolSize": 9, "emphasis": {"focus": "series"},
