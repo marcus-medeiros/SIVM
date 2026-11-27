@@ -1936,6 +1936,19 @@ def grafico_boxplot_arquivos(df_var, variavel, subtitulo, chave,
     minimos = [[i, round(r["Mínimo"], 3)] for i, (_, r) in enumerate(df_var.iterrows())]
     maximos = [[i, round(r["Máximo"], 3)] for i, (_, r) in enumerate(df_var.iterrows())]
     medias = [[i, round(r["Média"], 3)] for i, (_, r) in enumerate(df_var.iterrows())]
+                                 
+    rank_media = df_var["Média"].rank(method="min", ascending=False).astype(int).tolist()
+    rank_min = df_var["Mínimo"].rank(method="min", ascending=False).astype(int).tolist()
+    rank_max = df_var["Máximo"].rank(method="min", ascending=False).astype(int).tolist()
+
+    minimos = [[i, round(r["Mínimo"], 3), rank_min[i]]
+               for i, (_, r) in enumerate(df_var.iterrows())]
+    
+    maximos = [[i, round(r["Máximo"], 3), rank_max[i]]
+               for i, (_, r) in enumerate(df_var.iterrows())]
+    
+    medias = [[i, round(r["Média"], 3), rank_media[i]]
+              for i, (_, r) in enumerate(df_var.iterrows())]                     
 
     series = [
         {"name": "Distribuição", "type": "boxplot", "data": caixas,
@@ -1968,25 +1981,43 @@ def grafico_boxplot_arquivos(df_var, variavel, subtitulo, chave,
             "itemStyle": {"color": COR_REGEN},
             "z": 9
         })
-    series.extend([
-        {"name": "Mínimo", "type": "scatter", "data": minimos, "symbolSize": 10,
-         "itemStyle": {"color": COR_VEL},
-         "label": {"show": True, "position": "left", "distance": 10, "fontSize": 12,
-                   "formatter": js("function(p){return 'Mín: ' + Number(p.value[1]).toFixed(2).replace('.', ',');}")},
-         "z": 10},
-
-        {"name": "Máximo", "type": "scatter", "data": maximos, "symbolSize": 10,
-         "itemStyle": {"color": COR_REGEN},
-         "label": {"show": True, "position": "top", "fontSize": 12,
-                   "formatter": js("function(p){return 'Máx: ' + Number(p.value[1]).toFixed(2).replace('.', ',');}")},
-         "z": 10},
-
-        {"name": "Média", "type": "scatter", "data": medias, "symbolSize": 10,
-         "itemStyle": {"color": COR_ALTERNADOR, "borderColor": "#fff"},
-         "label": {"show": True, "position": "right", "fontSize": 12,
-                   "formatter": js("function(p){return 'Média: ' + Number(p.value[1]).toFixed(2).replace('.', ',');}")},
-         "z": 11}
-    ])
+        series.extend([
+            {"name": "Mínimo", "type": "scatter", "data": minimos, "symbolSize": 10,
+             "itemStyle": {"color": COR_VEL},
+             "label": {"show": True, "position": "left", "distance": 10, "fontSize": 12,
+                       "formatter": js("""
+        function(p){
+            let r = p.value[2];
+            let m = r==1 ? '🥇' : r==2 ? '🥈' : r==3 ? '🥉' : '#' + r;
+            return m + ' Mín: ' + Number(p.value[1]).toFixed(2).replace('.', ',');
+        }
+        """)},
+             "z": 10},
+        
+            {"name": "Máximo", "type": "scatter", "data": maximos, "symbolSize": 10,
+             "itemStyle": {"color": COR_REGEN},
+             "label": {"show": True, "position": "top", "fontSize": 12,
+                       "formatter": js("""
+        function(p){
+            let r = p.value[2];
+            let m = r==1 ? '🥇' : r==2 ? '🥈' : r==3 ? '🥉' : '#' + r;
+            return m + ' Máx: ' + Number(p.value[1]).toFixed(2).replace('.', ',');
+        }
+        """)},
+             "z": 10},
+        
+            {"name": "Média", "type": "scatter", "data": medias, "symbolSize": 10,
+             "itemStyle": {"color": COR_ALTERNADOR, "borderColor": "#fff"},
+             "label": {"show": True, "position": "right", "fontSize": 12,
+                       "formatter": js("""
+        function(p){
+            let r = p.value[2];
+            let m = r==1 ? '🥇' : r==2 ? '🥈' : r==3 ? '🥉' : '#' + r;
+            return m + ' Média: ' + Number(p.value[1]).toFixed(2).replace('.', ',');
+        }
+        """)},
+             "z": 11}
+        ])
     grafico({
         "title": {"text": f"Comparação de {variavel}",
                   "subtext": subtitulo + " | hastes: mín–máx, caixa: P25–P75, pontos: mín, máx e média",
