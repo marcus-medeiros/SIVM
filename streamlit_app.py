@@ -2155,9 +2155,6 @@ def bloco_comparacao(rotulo, arquivos, prefixo, chave):
             grafico_boxplot_arquivos(df[df["Variável"] == var].reset_index(drop=True),
                                      rotulo_var(var) if var in VARS else var, f"{rotulo} — {cond_nome}",
                                      f"comp_box_{chave}")
-
-            st.divider()
-            st.subheader("Ranking entre amostras")
             grafico_ranking_estatisticas(
                 df[df["Variável"] == var].reset_index(drop=True),
                 rotulo_var(var) if var in VARS else var,
