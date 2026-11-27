@@ -2046,8 +2046,7 @@ def exibir_comparacao_temporal(arquivos, prefixo, chave):
     mostrar_media = c3.checkbox("Média", True, key=f"tmp_{chave}_media")
     
     tipo_marcador = "pin"
-    fases = [("Fim transiente a frio", 505.0), ("Fim fase estabilizada", 1372.0)] \
-        if prefixo == "f" and st.checkbox("Mostrar fases do FTP (505 s / 1372 s)", key=f"tmp_fases_{chave}") else None
+    fases = None
     st.markdown("#### Primeiro ensaio")
     grafico_temporal(da, prefixo, sufixo, arquivos[ia].name, f"tmp_ga_{chave}",
                  estilo, modos_idx, None, eixo, fases,
