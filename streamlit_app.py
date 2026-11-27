@@ -1102,15 +1102,21 @@ def grafico_ranking_estatisticas(df_var, variavel, subtitulo, chave):
 
     nomes = df_var["Arquivo"].tolist()
     configuracoes = [
-        ("Máximo", "#008848"),
-        ("Mínimo", "#0077bd"),
-        ("Média", "#f39200"),
+        ("Máximo", "Máximo", COR_BOOST),
+        ("Mínimo", "Mínimo", COR_NEUTRO),
+        ("Média", "Média", COR_ALTERNADOR),
     ]
+    
     series = []
-    for nome, cor in configuracoes:
+    for nome, coluna, cor in configuracoes:
+        if coluna not in df_var.columns:
+            st.error(f"Coluna '{coluna}' não encontrada. Colunas disponíveis: {list(df_var.columns)}")
+            return
+    
         valores = pd.to_numeric(df_var[coluna], errors="coerce")
         criterio = valores.abs() if coluna == "Média" else valores
         ranking = criterio.rank(ascending=False, method="min")
+    
         series.append({
             "name": nome, "type": "line", "smooth": True, "symbol": "circle",
             "symbolSize": 9, "emphasis": {"focus": "series"},
