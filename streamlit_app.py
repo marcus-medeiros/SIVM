@@ -1114,7 +1114,7 @@ def grafico_ranking_estatisticas(df_var, variavel, subtitulo, chave):
             return
     
         valores = pd.to_numeric(df_var[coluna], errors="coerce")
-        criterio = valores.abs() if coluna == "Média" else valores
+        criterio = valores.abs() if coluna in ("Média", "Mínimo") else valores
         ranking = criterio.rank(ascending=False, method="min")
     
         series.append({
