@@ -1102,8 +1102,8 @@ def grafico_ranking_estatisticas(df_var, variavel, subtitulo, chave):
 
     nomes = df_var["Arquivo"].tolist()
     configuracoes = [
-        ("Máximo", "#702082"),
-        ("Mínimo", "#c9b3d6"),
+        ("Máximo", "#008848"),
+        ("Mínimo", "#0077bd"),
         ("Média", "#f39200"),
     ]
     series = []
