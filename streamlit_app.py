@@ -1952,11 +1952,11 @@ def grafico_boxplot_arquivos(df_var, variavel, subtitulo, chave):
             {"name": "Máximo", "type": "scatter", "data": maximos, "symbolSize": 10,
              "itemStyle": {"color": COR_REGEN}, "label": {"show": True, "position": "top", "fontSize": 12,
              "formatter": js("function(p){return 'Máx: ' + Number(p.value[1]).toFixed(2).replace('.', ',');}")}, "z": 10},
-            {"name": "Média", "type": "scatter", "data": medias, "symbolSize": 10,
-             "itemStyle": {"color": COR_ALTERNADOR, "borderColor": "#fff"},
-             "label": {"show": True, "position": "right", "fontSize": 12,
-             "formatter": js("function(p){return 'Média: ' + Number(p.value[1]).toFixed(2).replace('.', ',');}")},
-             "z": 11},
+            {"name": "Linha Média", "type": "line",
+             "data": [round(r["Média"], 3) for _, r in df_var.iterrows()],
+             "symbol": "circle", "lineStyle": {"color": COR_ALTERNADOR, "width": 2},
+             "itemStyle": {"color": COR_ALTERNADOR}, "z": 9},
+             "z": 11}
         ],
     }, "600px", chave)
 
