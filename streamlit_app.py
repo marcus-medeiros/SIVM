@@ -1999,9 +1999,9 @@ def grafico_boxplot_arquivos(df_var, variavel, subtitulo, chave,
              "label": {"show": True, "position": "right", "fontSize": 12,
                        "formatter": js(f"""
             function(p){{
-                return '#' + {rank_media}[p.dataIndex] +
-                       ' Média: ' +
-                       Number(p.value[1]).toFixed(2).replace('.', ',');
+                return 'Média: ' +
+                       Number(p.value[1]).toFixed(2).replace('.', ',') +
+                       ' (#' + {rank_media}[p.dataIndex] + ')';
             }}
             """)},
              "z": 11}
